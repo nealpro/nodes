@@ -31,16 +31,27 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  final GlobalKey<NodeCanvasState> _nodeCanvasKey = GlobalKey<NodeCanvasState>();
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(widget.title),
+        actions: [
+          IconButton(
+            onPressed: () {
+              _nodeCanvasKey.currentState?.addRootNode();
+            },
+            icon: const Icon(Icons.add),
+            tooltip: 'Add Root Node',
+          ),
+        ],
       ),
-      body: const Padding(
-        padding: EdgeInsets.all(16.0),
-        child: NodeCanvas(),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: NodeCanvas(key: _nodeCanvasKey),
       ),
     );
   }
