@@ -78,110 +78,35 @@ class NodeCanvasPainter extends CustomPainter {
     const cornerRadius = 8.0;
     const textPadding = 8.0;
     const maxLines = 3;
+    const maxWidth = 120.0;
 
     for (final node in nodes) {
       // Determine if this node is selected
       final isSelected = selectedNode != null && selectedNode!.id == node.id;
 
-      // Draw node text with custom word wrapping and dynamic sizing
+      // Draw node text with simplified text wrapping
       final textStyle = TextStyle(
         color: isSelected ? Colors.orange.shade900 : Colors.blue.shade800,
         fontSize: 11,
         fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
       );
 
-      // First, split text into words and build lines without width constraints
-      final words = node.text.split(' ');
-      final lines = <String>[];
-      String currentLine = '';
-
-      for (int i = 0; i < words.length; i++) {
-        final word = words[i];
-        final testLine = currentLine.isEmpty ? word : '$currentLine $word';
-
-        // If we haven't hit the max lines yet, just keep adding words to build natural lines
-        if (lines.length < maxLines - 1) {
-          // For the first two lines, we can be more generous with width
-          final testPainter = TextPainter(
-            text: TextSpan(text: testLine, style: textStyle),
-            textDirection: TextDirection.ltr,
-          );
-          testPainter.layout();
-
-          // Use a reasonable max width (e.g., 120px) but allow expansion
-          if (testPainter.width <= 120.0 || currentLine.isEmpty) {
-            currentLine = testLine;
-          } else {
-            // Line is getting too long, break here
-            lines.add(currentLine);
-            currentLine = word;
-          }
-        } else {
-          // This is the last line - we need to handle truncation
-          final remainingWords = words.sublist(i);
-          final remainingText = remainingWords.join(' ');
-
-          // Try to fit remaining text on the last line
-          final testLastLine = currentLine.isEmpty
-              ? remainingText
-              : '$currentLine $remainingText';
-          final testPainter = TextPainter(
-            text: TextSpan(text: testLastLine, style: textStyle),
-            textDirection: TextDirection.ltr,
-          );
-          testPainter.layout();
-
-          if (testPainter.width <= 120.0) {
-            // All remaining text fits
-            currentLine = testLastLine;
-            break;
-          } else {
-            // Need to truncate with ellipsis
-            String truncatedLine = currentLine.isEmpty
-                ? word
-                : '$currentLine $word';
-
-            // Keep adding words until we can't fit anymore
-            for (int j = i + 1; j < words.length; j++) {
-              final testWithNext = '$truncatedLine ${words[j]}';
-              final testPainter = TextPainter(
-                text: TextSpan(text: '$testWithNext...', style: textStyle),
-                textDirection: TextDirection.ltr,
-              );
-              testPainter.layout();
-
-              if (testPainter.width <= 120.0) {
-                truncatedLine = testWithNext;
-              } else {
-                break;
-              }
-            }
-
-            currentLine = '$truncatedLine...';
-            break;
-          }
-        }
-      }
-
-      // Add the last line if it's not empty
-      if (currentLine.isNotEmpty) {
-        lines.add(currentLine);
-      }
-
-      // Create the final text and measure it
-      final finalText = lines.join('\n');
+      // Create text painter with width constraints for automatic wrapping
       final nodeTextPainter = TextPainter(
-        text: TextSpan(text: finalText, style: textStyle),
+        text: TextSpan(text: node.text, style: textStyle),
         textDirection: TextDirection.ltr,
         textAlign: TextAlign.center,
+        maxLines: maxLines,
       );
-      nodeTextPainter.layout();
+
+      // Layout with width constraint to enable automatic text wrapping
+      nodeTextPainter.layout(maxWidth: maxWidth);
 
       // Calculate dynamic node width based on text width
       final textWidth = nodeTextPainter.width;
       final nodeWidth = (textWidth + (textPadding * 2)).clamp(
         minNodeWidth,
-        180.0,
+        maxWidth + (textPadding * 2),
       );
 
       // Use different colors for selected vs unselected nodes

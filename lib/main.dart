@@ -31,7 +31,8 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  final GlobalKey<NodeCanvasState> _nodeCanvasKey = GlobalKey<NodeCanvasState>();
+  final GlobalKey<NodeCanvasState> _nodeCanvasKey =
+      GlobalKey<NodeCanvasState>();
 
   @override
   Widget build(BuildContext context) {
@@ -46,6 +47,13 @@ class _MyHomePageState extends State<MyHomePage> {
             },
             icon: const Icon(Icons.add),
             tooltip: 'Add Root Node',
+          ),
+          IconButton(
+            onPressed: () {
+              _nodeCanvasKey.currentState?.addSiblingNode();
+            },
+            icon: const Icon(Icons.compare_arrows),
+            tooltip: 'Add Sibling Node',
           ),
         ],
       ),

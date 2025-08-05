@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:math' as math;
 import '../models/node.dart';
 import 'node_canvas_painter.dart';
@@ -108,6 +109,12 @@ class NodeCanvasState extends State<NodeCanvas> {
     _createNewNode(null);
   }
 
+  // Method to add a sibling node (called from main.dart)
+  void addSiblingNode() {
+    if (_selectedNode == null) return;
+    _createSiblingNode(_selectedNode!);
+  }
+
   // Method to create a new node (as child of selected node or as root)
   void _createNewNode(Node? parent) {
     final String nodeId = 'node_${DateTime.now().millisecondsSinceEpoch}';
@@ -131,6 +138,57 @@ class NodeCanvasState extends State<NodeCanvas> {
       newPosition = Offset(
         stemPosition.dx + distance * math.cos(angle),
         stemPosition.dy + distance * math.sin(angle),
+      );
+    }
+
+    // Constrain to canvas bounds
+    newPosition = _constrainPositionToBounds(newPosition);
+
+    final newNode = Node(id: nodeId, text: 'New Node', position: newPosition);
+
+    setState(() {
+      nodeTree.addNode(newNode, parent: parent);
+      _selectedNode = newNode;
+      _startTextEditing(newNode);
+    });
+  }
+
+  // Method to create a sibling node (parallel to selected node)
+  void _createSiblingNode(Node selectedNode) {
+    final String nodeId = 'node_${DateTime.now().millisecondsSinceEpoch}';
+
+    // Get the parent of the selected node
+    Node? parent = selectedNode.parent;
+
+    // If selected node is a root node, create another root node
+    if (parent == null) {
+      _createNewNode(null);
+      return;
+    }
+
+    // Determine position for new sibling node
+    // Position it near the selected node but slightly offset
+    double offsetDistance = 60; // Distance from the selected sibling
+    double angle =
+        (parent.children.length * 0.8) +
+        1.5; // Different angle from existing children
+
+    Offset newPosition = Offset(
+      selectedNode.position.dx + offsetDistance * math.cos(angle),
+      selectedNode.position.dy + offsetDistance * math.sin(angle),
+    );
+
+    // If the position would overlap with existing nodes, try a different offset
+    final nodes = nodeTree.toList();
+    bool positionTaken = nodes.any(
+      (node) => (node.position - newPosition).distance < nodeRadius * 2,
+    );
+
+    if (positionTaken) {
+      // Try positioning on the opposite side
+      newPosition = Offset(
+        selectedNode.position.dx - offsetDistance * math.cos(angle),
+        selectedNode.position.dy - offsetDistance * math.sin(angle),
       );
     }
 
@@ -175,6 +233,54 @@ class NodeCanvasState extends State<NodeCanvas> {
     }
   }
 
+  // Delete the selected node
+  void _deleteSelectedNode() {
+    if (_selectedNode == null || _editingNode != null) return;
+
+    final nodeToDelete = _selectedNode!;
+    setState(() {
+      // If we're deleting the selected node, clear selection first
+      if (_selectedNode == nodeToDelete) {
+        _selectedNode = null;
+      }
+
+      // Remove the node from the tree
+      nodeTree.removeNode(nodeToDelete.id);
+
+      debugPrint('Deleted node: ${nodeToDelete.text}');
+    });
+  }
+
+  // Get help text for when a node is selected
+  String _getSelectedNodeHelpText() {
+    final isDesktop =
+        !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.linux ||
+            defaultTargetPlatform == TargetPlatform.macOS);
+
+    if (isDesktop) {
+      return 'Press N to add child • Press O to add sibling • Press E to edit • Press Delete to remove • Long press (mobile) to add child';
+    } else {
+      return 'Press N to add child • Double-tap to edit • Long press to add child • Use sibling button in top bar';
+    }
+  }
+
+  // Get default help text for when no node is selected
+  String _getDefaultHelpText() {
+    final isDesktop =
+        !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.linux ||
+            defaultTargetPlatform == TargetPlatform.macOS);
+
+    if (isDesktop) {
+      return 'Select a node first • Use + button to add root node • Press E to edit nodes on desktop';
+    } else {
+      return 'Select a node first • Use + button to add root node • Double-tap nodes to edit';
+    }
+  }
+
   // Handle keyboard input
   void _handleKeyPress(KeyEvent event) {
     if (event is KeyDownEvent) {
@@ -183,6 +289,26 @@ class NodeCanvasState extends State<NodeCanvas> {
           _editingNode == null) {
         // Create child node when 'N' is pressed and a node is selected
         _createNewNode(_selectedNode);
+      } else if (event.logicalKey == LogicalKeyboardKey.keyO &&
+          _selectedNode != null &&
+          _editingNode == null) {
+        // Create sibling node when 'O' is pressed and a node is selected
+        _createSiblingNode(_selectedNode!);
+      } else if (event.logicalKey == LogicalKeyboardKey.keyE &&
+          _selectedNode != null &&
+          _editingNode == null &&
+          !kIsWeb &&
+          (defaultTargetPlatform == TargetPlatform.windows ||
+              defaultTargetPlatform == TargetPlatform.linux ||
+              defaultTargetPlatform == TargetPlatform.macOS)) {
+        // Edit node when 'E' is pressed on desktop platforms
+        _startTextEditing(_selectedNode!);
+      } else if ((event.logicalKey == LogicalKeyboardKey.delete ||
+              event.logicalKey == LogicalKeyboardKey.backspace) &&
+          _selectedNode != null &&
+          _editingNode == null) {
+        // Delete node when Delete or Backspace is pressed
+        _deleteSelectedNode();
       } else if (event.logicalKey == LogicalKeyboardKey.escape &&
           _editingNode != null) {
         // Cancel text editing on Escape
@@ -310,8 +436,12 @@ class NodeCanvasState extends State<NodeCanvas> {
                       }
                     },
                     onDoubleTap: () {
-                      // Double tap to edit selected node
-                      if (_selectedNode != null && _editingNode == null) {
+                      // Double tap to edit selected node (mobile only)
+                      if (_selectedNode != null &&
+                          _editingNode == null &&
+                          (kIsWeb ||
+                              defaultTargetPlatform == TargetPlatform.android ||
+                              defaultTargetPlatform == TargetPlatform.iOS)) {
                         _startTextEditing(_selectedNode!);
                       }
                     },
@@ -385,10 +515,10 @@ class NodeCanvasState extends State<NodeCanvas> {
                       ),
                       child: Text(
                         _selectedNode != null && _editingNode == null
-                            ? 'Press N to add child node • Double-tap to edit • Long press (mobile) to add child'
+                            ? _getSelectedNodeHelpText()
                             : _editingNode != null
                             ? 'Press Enter to save • Press Escape to cancel • Tap outside to save'
-                            : 'Select a node first • Use + button to add root node • Double-tap nodes to edit',
+                            : _getDefaultHelpText(),
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 12,
