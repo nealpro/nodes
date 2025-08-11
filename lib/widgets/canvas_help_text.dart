@@ -27,4 +27,28 @@ class CanvasHelpText {
   static String getEditingHelpText() {
     return 'Press Enter to save • Press Escape to cancel • Tap outside to save';
   }
+
+  static String getFullHelpText() {
+    if (_isDesktop()) {
+      return '''
+**Canvas Controls:**
+- Pan: Click and drag, or use arrow keys.
+- Zoom: Scroll wheel.
+
+**Node Actions (with a node selected):**
+- N: Add a new child node.
+- O: Add a new sibling node.
+- E: Edit the selected node's text.
+- Delete/Backspace: Remove the selected node and its children.
+
+**General:**
+- H: Toggle this help text.
+- Shift + H: Toggle full help.
+- + Button: Add a new root node if the canvas is empty.
+''';
+    } else {
+      // No full help for mobile yet
+      return '';
+    }
+  }
 }

@@ -25,8 +25,19 @@ class CanvasKeyboardHandler {
     required VoidCallback onDeleteNode,
     required VoidCallback onCancelEditing,
     required VoidCallback onFinishEditing,
+    required VoidCallback onToggleHelp,
+    required VoidCallback onToggleFullHelp,
   }) {
     if (event is KeyDownEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.keyH && isDesktop()) {
+        if (HardwareKeyboard.instance.isShiftPressed) {
+          onToggleFullHelp();
+        } else {
+          onToggleHelp();
+        }
+        return; // Prevent other actions when 'H' is pressed
+      }
+
       if (event.logicalKey == LogicalKeyboardKey.keyN &&
           hasSelectedNode &&
           !isEditing) {

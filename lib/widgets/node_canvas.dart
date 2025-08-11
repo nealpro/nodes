@@ -18,6 +18,8 @@ class NodeCanvas extends StatefulWidget {
 class NodeCanvasState extends State<NodeCanvas> {
   late NodeCanvasController _controller;
   late NodeManager _nodeManager;
+  bool _showHelpText = true;
+  bool _showFullHelp = false;
 
   @override
   void initState() {
@@ -71,6 +73,16 @@ class NodeCanvasState extends State<NodeCanvas> {
       onDeleteNode: _nodeManager.deleteSelectedNode,
       onCancelEditing: _nodeManager.cancelTextEditing,
       onFinishEditing: _nodeManager.finishTextEditing,
+      onToggleHelp: () {
+        setState(() {
+          _showHelpText = !_showHelpText;
+        });
+      },
+      onToggleFullHelp: () {
+        setState(() {
+          _showFullHelp = !_showFullHelp;
+        });
+      },
     );
   }
 
@@ -153,7 +165,12 @@ class NodeCanvasState extends State<NodeCanvas> {
                           onFinishEditing: _nodeManager.finishTextEditing,
                         ),
                       // Help text overlay
-                      HelpTextOverlay(helpText: _getHelpText()),
+                      if (_showHelpText && !_showFullHelp)
+                        HelpTextOverlay(helpText: _getHelpText()),
+                      if (_showFullHelp)
+                        HelpTextOverlay(
+                          helpText: CanvasHelpText.getFullHelpText(),
+                        ),
                     ],
                   ),
                 ),
