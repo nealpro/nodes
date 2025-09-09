@@ -1,16 +1,19 @@
 # nodes
 
-A new Flutter project.
+Blazingly fast mindmaps on many platforms with intuitive defaults. Inspired by `vim` and `h-m-m`.
 
-## Getting Started
+Uses the Flutter Flame engine.
 
-This project is a starting point for a Flutter application.
+## Features
 
-A few resources to get you started if this is your first Flutter project:
+- Freeform mode: Multiple mindmaps can co-exist on the same plane with nodes that can move anywhere freely.
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+- Arranged and paginated mode: Free nodes are arranged into a structure starting at an edge. Root nodes move to an edge, and roots are paginated with your sorting criteria.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- All nodes are files (that are markdown by default.) Types can be selected.
+
+- All actions can ideally be triggered by the keyboard.
+
+## Future
+
+- Scripting language for customization.
