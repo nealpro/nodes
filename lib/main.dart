@@ -1,6 +1,8 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'connection_painter.dart';
+import 'node.dart';
 
 void main() {
   runApp(const MindMapApp());
@@ -18,23 +20,6 @@ class MindMapApp extends StatelessWidget {
       home: const MindMapScreen(),
     );
   }
-}
-
-class Node {
-  final String id;
-  Offset position;
-  Offset? savedPosition;
-  final String label;
-  final Color color;
-  final List<Node> children;
-
-  Node({
-    required this.id,
-    required this.position,
-    required this.label,
-    required this.color,
-    List<Node>? children,
-  }) : children = children ?? [];
 }
 
 class MindMapScreen extends StatefulWidget {
@@ -172,8 +157,8 @@ class _MindMapScreenState extends State<MindMapScreen> {
   double _layoutTree(Node node, double x, double y) {
     const double nodeWidth = 120;
     const double nodeHeight = 60;
-    const double horizontalGap = 50;
-    const double verticalGap = 20;
+    const double horizontalGap = 100;
+    const double verticalGap = 40;
 
     // Calculate total height of children
     double childrenHeight = 0;
@@ -272,6 +257,13 @@ class _MindMapScreenState extends State<MindMapScreen> {
                       // Background grid
                       Positioned.fill(
                         child: CustomPaint(painter: GridPainter()),
+                      ),
+
+                      // Connections
+                      Positioned.fill(
+                        child: CustomPaint(
+                          painter: ConnectionPainter(nodes: _nodes),
+                        ),
                       ),
 
                       // Nodes
