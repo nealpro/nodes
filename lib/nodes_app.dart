@@ -6,8 +6,97 @@ import 'widgets/node_operations.dart';
 import 'components/node_component.dart';
 import 'components/stem_component.dart';
 import 'components/connection_component.dart';
+import 'package:flutter/services.dart';
 
 class NodesApp extends FlameGame {
+  // Keyboard and gesture handling moved from main.dart
+  Widget buildInteractionLayer() {
+    final focusNode = FocusNode();
+    return KeyboardListener(
+      focusNode: focusNode,
+      autofocus: true,
+      onKeyEvent: (event) {
+        if (event is KeyDownEvent) {
+          if (event.logicalKey == LogicalKeyboardKey.keyN &&
+              selectedNode != null) {
+            addChildNode();
+          } else if (event.logicalKey == LogicalKeyboardKey.keyO &&
+              selectedNode != null) {
+            addSiblingNode();
+          } else if (event.logicalKey == LogicalKeyboardKey.keyE &&
+              selectedNode != null) {
+            // Start editing
+            // For now, just print
+            print('Start editing [32m${selectedNode!.text}[0m');
+          } else if (event.logicalKey == LogicalKeyboardKey.delete &&
+              selectedNode != null) {
+            deleteSelectedNode();
+          }
+          // Add more keys as needed
+        }
+      },
+      child: GestureDetector(
+        onTapDown: (details) {
+          final gamePosition = Vector2(
+            details.localPosition.dx,
+            details.localPosition.dy,
+          );
+          final componentsAtTap = componentsAtPoint(
+            gamePosition,
+          ).whereType<NodeComponent>();
+          if (componentsAtTap.isNotEmpty) {
+            final tappedNode = componentsAtTap.first.node;
+            if (selectedNode == tappedNode) {
+              selectedNode = null;
+            } else {
+              selectedNode = tappedNode;
+            }
+            // Update selection for all components
+            for (final component in children.whereType<NodeComponent>()) {
+              component.updateSelection(selectedNode);
+            }
+          } else {
+            selectedNode = null;
+            for (final component in children.whereType<NodeComponent>()) {
+              component.updateSelection(null);
+            }
+          }
+        },
+        onPanStart: (details) {
+          final gamePosition = Vector2(
+            details.localPosition.dx,
+            details.localPosition.dy,
+          );
+          final componentsAtDrag = componentsAtPoint(
+            gamePosition,
+          ).whereType<NodeComponent>();
+          if (componentsAtDrag.isNotEmpty) {
+            draggedNode = componentsAtDrag.first.node;
+          }
+        },
+        onPanUpdate: (details) {
+          if (draggedNode != null) {
+            final delta = Offset(details.delta.dx, details.delta.dy);
+            final newPosition = draggedNode!.position + delta;
+            draggedNode!.position = constrainPositionToBounds(newPosition);
+            // Update the component position
+            final component = children.whereType<NodeComponent>().firstWhere(
+              (comp) => comp.node == draggedNode,
+            );
+            component.position = Vector2(
+              draggedNode!.position.dx,
+              draggedNode!.position.dy,
+            );
+          }
+        },
+        onPanEnd: (details) {
+          draggedNode = null;
+        },
+        child: GameWidget(game: this),
+      ),
+    );
+  }
+
   late NodeTree nodeTree;
   Node? selectedNode;
   Node? draggedNode;
