@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:nodes/grid_painter.dart';
+import 'package:nodes/node_widget.dart';
 import 'connection_painter.dart';
 import 'node.dart';
 
@@ -36,9 +39,13 @@ class _MindMapScreenState extends State<MindMapScreen> {
   final TransformationController transformationController =
       TransformationController();
   bool _isOrganized = false;
+  bool _isLaserActive = false;
+  late Offset _laserPosition;
+  Timer? _laserTimer;
 
   @override
   void dispose() {
+    _laserTimer?.cancel();
     transformationController.removeListener(_onTransformationChange);
     transformationController.dispose();
     super.dispose();
@@ -47,6 +54,7 @@ class _MindMapScreenState extends State<MindMapScreen> {
   @override
   void initState() {
     super.initState();
+    _laserPosition = Offset(_canvasSize / 2, _canvasSize / 2);
     _generateNodes();
     transformationController.addListener(_onTransformationChange);
   }
@@ -63,6 +71,79 @@ class _MindMapScreenState extends State<MindMapScreen> {
         });
       }
     }
+  }
+
+  void _startLaser() {
+    if (_isLaserActive) return;
+    setState(() {
+      _isLaserActive = true;
+    });
+    _laserTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
+      _updateNodes();
+    });
+  }
+
+  void _stopLaser() {
+    if (!_isLaserActive) return;
+    _laserTimer?.cancel();
+    setState(() {
+      _isLaserActive = false;
+    });
+  }
+
+  void _updateNodes() {
+    final bool isRepelling = HardwareKeyboard.instance.isShiftPressed;
+    setState(() {
+      for (var node in _nodes) {
+        final double dx = _laserPosition.dx - node.position.dx;
+        final double dy = _laserPosition.dy - node.position.dy;
+        final double distance = sqrt(dx * dx + dy * dy);
+
+        if (isRepelling) {
+          double moveX = 0;
+          double moveY = 0;
+
+          // Standard repel vector (away from laser)
+          if (distance > 0.1) {
+            moveX = -(dx / distance) * 10;
+            moveY = -(dy / distance) * 10;
+          }
+
+          // Add scatter noise inversely proportional to distance
+          // This ensures nodes spread out if they are clumped near the laser
+          if (distance < 100) {
+            final int hash = node.id.hashCode;
+            final double angle = (hash % 360) * (pi / 180);
+            final double strength = (100 - distance) / 100;
+
+            moveX += cos(angle) * 10 * strength;
+            moveY += sin(angle) * 10 * strength;
+          }
+
+          // Normalize to maintain constant speed
+          final double moveDist = sqrt(moveX * moveX + moveY * moveY);
+          if (moveDist > 0) {
+            moveX = (moveX / moveDist) * 10;
+            moveY = (moveY / moveDist) * 10;
+            node.position += Offset(moveX, moveY);
+          }
+        } else {
+          if (distance > 10) {
+            final double moveX = (dx / distance) * 10;
+            final double moveY = (dy / distance) * 10;
+            node.position += Offset(moveX, moveY);
+          } else {
+            node.position = _laserPosition;
+          }
+        }
+
+        // Clamp
+        node.position = Offset(
+          node.position.dx.clamp(0.0, _canvasSize - 120),
+          node.position.dy.clamp(0.0, _canvasSize - 60),
+        );
+      }
+    });
   }
 
   void _generateNodes() {
@@ -241,6 +322,16 @@ class _MindMapScreenState extends State<MindMapScreen> {
             },
             child: Focus(
               autofocus: true,
+              onKeyEvent: (node, event) {
+                if (event.logicalKey == LogicalKeyboardKey.keyD) {
+                  if (event is KeyDownEvent) {
+                    _startLaser();
+                  } else if (event is KeyUpEvent) {
+                    _stopLaser();
+                  }
+                }
+                return KeyEventResult.ignored;
+              },
               child: InteractiveViewer(
                 transformationController: transformationController,
                 panEnabled: !_isOrganized,
@@ -252,58 +343,97 @@ class _MindMapScreenState extends State<MindMapScreen> {
                 child: SizedBox(
                   width: _canvasSize,
                   height: _canvasSize,
-                  child: Stack(
-                    children: [
-                      // Background grid
-                      Positioned.fill(
-                        child: CustomPaint(painter: GridPainter()),
-                      ),
-
-                      // Connections
-                      Positioned.fill(
-                        child: CustomPaint(
-                          painter: ConnectionPainter(nodes: _nodes),
+                  child: Listener(
+                    onPointerDown: (event) {
+                      if (_isLaserActive) {
+                        setState(() {
+                          _laserPosition = event.localPosition;
+                        });
+                      }
+                    },
+                    child: Stack(
+                      children: [
+                        // Background grid
+                        Positioned.fill(
+                          child: CustomPaint(painter: GridPainter()),
                         ),
-                      ),
 
-                      // Nodes
-                      ..._nodes.map((node) {
-                        return Positioned(
-                          key: ValueKey(node.id),
-                          left: node.position.dx,
-                          top: node.position.dy,
-                          child: GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _nodes.remove(node);
-                                _nodes.add(node);
-                              });
-                            },
-                            onPanUpdate: _isOrganized
-                                ? null
-                                : (details) {
-                                    setState(() {
-                                      final newPosition =
-                                          node.position + details.delta;
-                                      node.position = Offset(
-                                        newPosition.dx.clamp(
-                                          0.0,
-                                          _canvasSize - 120,
-                                        ),
-                                        newPosition.dy.clamp(
-                                          0.0,
-                                          _canvasSize - 60,
-                                        ),
-                                      );
-                                    });
-                                  },
-                            child: RepaintBoundary(
-                              child: NodeWidget(node: node),
+                        // Connections
+                        Positioned.fill(
+                          child: CustomPaint(
+                            painter: ConnectionPainter(nodes: _nodes),
+                          ),
+                        ),
+
+                        // Nodes
+                        ..._nodes.map((node) {
+                          return Positioned(
+                            key: ValueKey(node.id),
+                            left: node.position.dx,
+                            top: node.position.dy,
+                            child: GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _nodes.remove(node);
+                                  _nodes.add(node);
+                                });
+                              },
+                              onPanUpdate: _isOrganized
+                                  ? null
+                                  : (details) {
+                                      setState(() {
+                                        final newPosition =
+                                            node.position + details.delta;
+                                        node.position = Offset(
+                                          newPosition.dx.clamp(
+                                            0.0,
+                                            _canvasSize - 120,
+                                          ),
+                                          newPosition.dy.clamp(
+                                            0.0,
+                                            _canvasSize - 60,
+                                          ),
+                                        );
+                                      });
+                                    },
+                              child: RepaintBoundary(
+                                child: NodeWidget(node: node),
+                              ),
+                            ),
+                          );
+                        }),
+
+                        // Laser Pointer
+                        if (_isLaserActive)
+                          Positioned(
+                            left: _laserPosition.dx - 5,
+                            top: _laserPosition.dy - 5,
+                            child: Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                color: HardwareKeyboard.instance.isShiftPressed
+                                    ? Colors.blue
+                                    : Colors.red,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color:
+                                        (HardwareKeyboard
+                                                    .instance
+                                                    .isShiftPressed
+                                                ? Colors.blue
+                                                : Colors.red)
+                                            .withOpacity(0.5),
+                                    blurRadius: 10,
+                                    spreadRadius: 2,
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        );
-                      }),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -313,63 +443,4 @@ class _MindMapScreenState extends State<MindMapScreen> {
       ),
     );
   }
-}
-
-class NodeWidget extends StatelessWidget {
-  final Node node;
-
-  const NodeWidget({super.key, required this.node});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 120,
-      height: 60,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: node.color, width: 2),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 8,
-            offset: const Offset(2, 4),
-          ),
-        ],
-      ),
-      alignment: Alignment.center,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(node.label, style: const TextStyle(fontWeight: FontWeight.bold)),
-          Text(
-            '(${node.position.dx.toInt()}, ${node.position.dy.toInt()})',
-            style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class GridPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.grey[300]!
-      ..strokeWidth = 1;
-
-    const double gridSize = 50;
-
-    for (double x = 0; x < size.width; x += gridSize) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-
-    for (double y = 0; y < size.height; y += gridSize) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
