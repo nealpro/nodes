@@ -12,4 +12,3 @@ part 'mind_map_app.dart';
 void main() {
   runApp(const MindMapApp());
 }
-

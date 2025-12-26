@@ -31,6 +31,7 @@ class _MindMapScreenState extends State<MindMapScreen> {
   bool _isLaserActive = false;
   late Offset _laserPosition;
   Timer? _laserTimer;
+  Node? _selectedNode;
 
   @override
   void dispose() {
@@ -52,7 +53,7 @@ class _MindMapScreenState extends State<MindMapScreen> {
     try {
       Matrix4.inverted(transformationController.value);
     } catch (e) {
-      print('Matrix error caught! Resetting. Error: $e');
+      // print('Matrix error caught! Resetting. Error: $e');
       transformationController.value = Matrix4.identity();
       if (_isOrganized) {
         setState(() {
@@ -172,6 +173,7 @@ class _MindMapScreenState extends State<MindMapScreen> {
           ),
           label: 'Node ${_nodes.length}',
           color: Colors.primaries[_random.nextInt(Colors.primaries.length)],
+          parent: parent,
         );
 
         _nodes.add(newNode);
@@ -182,7 +184,7 @@ class _MindMapScreenState extends State<MindMapScreen> {
   }
 
   void _toggleOrganizedMode(BoxConstraints constraints) {
-    print('Toggling organized mode');
+    // print('Toggling organized mode');
     setState(() {
       _isOrganized = !_isOrganized;
       if (_isOrganized) {
@@ -191,25 +193,13 @@ class _MindMapScreenState extends State<MindMapScreen> {
           node.savedPosition = node.position;
         }
         _organizeNodes();
-        // Center viewport to left center (where root is)
-        // Root is at (100, _canvasSize / 2) approx
-        // We want that point to be at the left center of the viewport.
-        // Viewport center is
-        // (constraints.maxWidth / 2, constraints.maxHeight / 2)
-        // We want (100, _canvasSize/2) to be at
-        // (padding, constraints.maxHeight/2)
-        // So translate:
-        // tx = padding - 100
-        // ty = constraints.maxHeight/2 - _canvasSize/2
-        final double height = constraints.hasBoundedHeight
-            ? constraints.maxHeight
-            : 800;
-        final double x = 50 - 100; // 50 padding
-        final double y = height / 2 - _canvasSize / 2;
-        print('Setting matrix translation: x=$x, y=$y');
-        transformationController.value = Matrix4.identity()
-          ..translateByDouble(x, y, 0.0, 1.0);
+        // Select root node and center on it
+        if (_nodes.isNotEmpty) {
+          _selectedNode = _nodes[0];
+          _centerOnNode(_selectedNode!, constraints);
+        }
       } else {
+        _selectedNode = null;
         // Restore positions
         for (var node in _nodes) {
           if (node.savedPosition != null) {
@@ -283,6 +273,66 @@ class _MindMapScreenState extends State<MindMapScreen> {
     final double y = -(_canvasSize / 2 - height / 2);
     transformationController.value = Matrix4.identity()
       ..translateByDouble(x, y, 0.0, 1.0);
+  }
+
+  void _centerOnNode(Node node, BoxConstraints constraints) {
+    final double width = constraints.hasBoundedWidth
+        ? constraints.maxWidth
+        : 800;
+    final double height = constraints.hasBoundedHeight
+        ? constraints.maxHeight
+        : 600;
+    // Node center is at (node.position.dx + 60, node.position.dy + 30)
+    final double nodeCenterX = node.position.dx + 60;
+    final double nodeCenterY = node.position.dy + 30;
+    // We want nodeCenterX/Y to be at viewport center (width/2, height/2)
+    final double x = width / 2 - nodeCenterX;
+    final double y = height / 2 - nodeCenterY;
+    transformationController.value = Matrix4.identity()
+      ..translateByDouble(x, y, 0.0, 1.0);
+  }
+
+  void _navigateSelection(String direction, BoxConstraints constraints) {
+    if (!_isOrganized || _selectedNode == null) return;
+
+    Node? newSelection;
+    switch (direction) {
+      case 'h': // Left - go to parent
+        newSelection = _selectedNode!.parent;
+        break;
+      case 'l': // Right - go to first child
+        if (_selectedNode!.children.isNotEmpty) {
+          newSelection = _selectedNode!.children.first;
+        }
+        break;
+      case 'j': // Down - go to next sibling
+        final parent = _selectedNode!.parent;
+        if (parent != null) {
+          final siblings = parent.children;
+          final currentIndex = siblings.indexOf(_selectedNode!);
+          if (currentIndex < siblings.length - 1) {
+            newSelection = siblings[currentIndex + 1];
+          }
+        }
+        break;
+      case 'k': // Up - go to previous sibling
+        final parent = _selectedNode!.parent;
+        if (parent != null) {
+          final siblings = parent.children;
+          final currentIndex = siblings.indexOf(_selectedNode!);
+          if (currentIndex > 0) {
+            newSelection = siblings[currentIndex - 1];
+          }
+        }
+        break;
+    }
+
+    if (newSelection != null) {
+      setState(() {
+        _selectedNode = newSelection;
+      });
+      _centerOnNode(newSelection, constraints);
+    }
   }
 
   @override
@@ -359,7 +409,12 @@ class _MindMapScreenState extends State<MindMapScreen> {
                               );
                             });
                           },
-                    child: RepaintBoundary(child: NodeWidget(node: node)),
+                    child: RepaintBoundary(
+                      child: NodeWidget(
+                        node: node,
+                        isSelected: _isOrganized && _selectedNode == node,
+                      ),
+                    ),
                   ),
                 );
               }),
@@ -379,6 +434,14 @@ class _MindMapScreenState extends State<MindMapScreen> {
                   _centerViewport(constraints),
               const SingleActivator(LogicalKeyboardKey.keyF): () =>
                   _toggleOrganizedMode(constraints),
+              const SingleActivator(LogicalKeyboardKey.keyH): () =>
+                  _navigateSelection('h', constraints),
+              const SingleActivator(LogicalKeyboardKey.keyJ): () =>
+                  _navigateSelection('j', constraints),
+              const SingleActivator(LogicalKeyboardKey.keyK): () =>
+                  _navigateSelection('k', constraints),
+              const SingleActivator(LogicalKeyboardKey.keyL): () =>
+                  _navigateSelection('l', constraints),
             },
             child: Focus(
               autofocus: true,

@@ -3,8 +3,9 @@ import 'package:nodes/node.dart';
 
 class NodeWidget extends StatelessWidget {
   final Node node;
+  final bool isSelected;
 
-  const NodeWidget({super.key, required this.node});
+  const NodeWidget({super.key, required this.node, this.isSelected = false});
 
   @override
   Widget build(BuildContext context) {
@@ -12,13 +13,15 @@ class NodeWidget extends StatelessWidget {
       width: 120,
       height: 60,
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: node.color, width: 2),
+        color: isSelected ? node.color.withValues(alpha: 0.2) : Colors.white,
+        border: Border.all(color: node.color, width: isSelected ? 4 : 2),
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 8,
+            color: isSelected
+                ? node.color.withValues(alpha: 0.4)
+                : Colors.black.withValues(alpha: 0.1),
+            blurRadius: isSelected ? 12 : 8,
             offset: const Offset(2, 4),
           ),
         ],

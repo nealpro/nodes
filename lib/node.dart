@@ -7,6 +7,7 @@ class Node {
   final String label;
   final Color color;
   final List<Node> children;
+  Node? parent;
 
   Node({
     required this.id,
@@ -14,5 +15,6 @@ class Node {
     required this.label,
     required this.color,
     List<Node>? children,
+    this.parent,
   }) : children = children ?? [];
 }
