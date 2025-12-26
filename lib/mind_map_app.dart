@@ -28,14 +28,14 @@ class _MindMapScreenState extends State<MindMapScreen> {
   final TransformationController transformationController =
       TransformationController();
   bool _isOrganized = false;
-  bool _isLaserActive = false;
-  late Offset _laserPosition;
-  Timer? _laserTimer;
+  bool _isAutoOrganizing = false;
+  Timer? _autoOrganizeTimer;
   Node? _selectedNode;
+  final Map<String, Offset> _targetPositions = {};
 
   @override
   void dispose() {
-    _laserTimer?.cancel();
+    _autoOrganizeTimer?.cancel();
     transformationController.removeListener(_onTransformationChange);
     transformationController.dispose();
     super.dispose();
@@ -44,7 +44,6 @@ class _MindMapScreenState extends State<MindMapScreen> {
   @override
   void initState() {
     super.initState();
-    _laserPosition = Offset(_canvasSize / 2, _canvasSize / 2);
     _generateNodes();
     transformationController.addListener(_onTransformationChange);
   }
@@ -63,77 +62,106 @@ class _MindMapScreenState extends State<MindMapScreen> {
     }
   }
 
-  void _startLaser() {
-    if (_isLaserActive) return;
+  void _startAutoOrganize() {
+    if (_isAutoOrganizing || _isOrganized) return;
+    // Calculate target positions using the same layout algorithm
+    _calculateTargetPositions();
     setState(() {
-      _isLaserActive = true;
+      _isAutoOrganizing = true;
     });
-    _laserTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
-      _updateNodes();
+    _autoOrganizeTimer = Timer.periodic(const Duration(milliseconds: 16), (
+      timer,
+    ) {
+      _stepTowardOrganized();
     });
   }
 
-  void _stopLaser() {
-    if (!_isLaserActive) return;
-    _laserTimer?.cancel();
+  void _stopAutoOrganize() {
+    if (!_isAutoOrganizing) return;
+    _autoOrganizeTimer?.cancel();
     setState(() {
-      _isLaserActive = false;
+      _isAutoOrganizing = false;
     });
   }
 
-  void _updateNodes() {
-    final bool isRepelling = HardwareKeyboard.instance.isShiftPressed;
+  void _calculateTargetPositions() {
+    if (_nodes.isEmpty) return;
+    _targetPositions.clear();
+    final root = _nodes[0];
+    _calculateTreeLayout(root, 100, _canvasSize / 2);
+  }
+
+  double _calculateTreeLayout(Node node, double x, double y) {
+    const double nodeWidth = 120;
+    const double nodeHeight = 60;
+    const double horizontalGap = 100;
+    const double verticalGap = 40;
+
+    double childrenHeight = 0;
+    for (var child in node.children) {
+      childrenHeight += _getSubtreeHeight(child, nodeHeight, verticalGap);
+    }
+
+    // Store target position
+    _targetPositions[node.id] = Offset(x, y - nodeHeight / 2);
+
+    if (node.children.isNotEmpty) {
+      double currentY = y - childrenHeight / 2;
+      for (var child in node.children) {
+        final childSubtreeHeight = _getSubtreeHeight(
+          child,
+          nodeHeight,
+          verticalGap,
+        );
+        _calculateTreeLayout(
+          child,
+          x + nodeWidth + horizontalGap,
+          currentY + childSubtreeHeight / 2,
+        );
+        currentY += childSubtreeHeight;
+      }
+    }
+    return childrenHeight;
+  }
+
+  void _stepTowardOrganized() {
+    const double speed = 5.0; // Pixels per frame
+    const double snapThreshold = 2.0; // Snap to target when this close
+
+    bool allAtTarget = true;
+
     setState(() {
       for (var node in _nodes) {
-        final double dx = _laserPosition.dx - node.position.dx;
-        final double dy = _laserPosition.dy - node.position.dy;
+        final target = _targetPositions[node.id];
+        if (target == null) continue;
+
+        final double dx = target.dx - node.position.dx;
+        final double dy = target.dy - node.position.dy;
         final double distance = sqrt(dx * dx + dy * dy);
 
-        if (isRepelling) {
-          double moveX = 0;
-          double moveY = 0;
-
-          // Standard repel vector (away from laser)
-          if (distance > 0.1) {
-            moveX = -(dx / distance) * 10;
-            moveY = -(dy / distance) * 10;
-          }
-
-          // Add scatter noise inversely proportional to distance
-          // This ensures nodes spread out if they are clumped near the laser
-          if (distance < 100) {
-            final int hash = node.id.hashCode;
-            final double angle = (hash % 360) * (pi / 180);
-            final double strength = (100 - distance) / 100;
-
-            moveX += cos(angle) * 10 * strength;
-            moveY += sin(angle) * 10 * strength;
-          }
-
-          // Normalize to maintain constant speed
-          final double moveDist = sqrt(moveX * moveX + moveY * moveY);
-          if (moveDist > 0) {
-            moveX = (moveX / moveDist) * 10;
-            moveY = (moveY / moveDist) * 10;
-            node.position += Offset(moveX, moveY);
-          }
+        if (distance > snapThreshold) {
+          allAtTarget = false;
+          // Move toward target
+          final double moveX = (dx / distance) * min(speed, distance);
+          final double moveY = (dy / distance) * min(speed, distance);
+          node.position += Offset(moveX, moveY);
         } else {
-          if (distance > 10) {
-            final double moveX = (dx / distance) * 10;
-            final double moveY = (dy / distance) * 10;
-            node.position += Offset(moveX, moveY);
-          } else {
-            node.position = _laserPosition;
-          }
+          // Snap to target
+          node.position = target;
         }
 
-        // Clamp
+        // Clamp to canvas bounds
         node.position = Offset(
           node.position.dx.clamp(0.0, _canvasSize - 120),
           node.position.dy.clamp(0.0, _canvasSize - 60),
         );
       }
     });
+
+    // Auto-stop when all nodes reach their targets
+    if (allAtTarget) {
+      _stopAutoOrganize();
+    }
   }
 
   void _generateNodes() {
@@ -354,27 +382,6 @@ class _MindMapScreenState extends State<MindMapScreen> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          var container = Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-              color: HardwareKeyboard.instance.isShiftPressed
-                  ? Colors.blue
-                  : Colors.red,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color:
-                      (HardwareKeyboard.instance.isShiftPressed
-                              ? Colors.blue
-                              : Colors.red)
-                          .withValues(alpha: 0.5),
-                  blurRadius: 10,
-                  spreadRadius: 2,
-                ),
-              ],
-            ),
-          );
           var stack = Stack(
             children: [
               // Background grid
@@ -418,14 +425,6 @@ class _MindMapScreenState extends State<MindMapScreen> {
                   ),
                 );
               }),
-
-              // Laser Pointer
-              if (_isLaserActive)
-                Positioned(
-                  left: _laserPosition.dx - 5,
-                  top: _laserPosition.dy - 5,
-                  child: container,
-                ),
             ],
           );
           return CallbackShortcuts(
@@ -448,10 +447,11 @@ class _MindMapScreenState extends State<MindMapScreen> {
               onKeyEvent: (node, event) {
                 if (event.logicalKey == LogicalKeyboardKey.keyD) {
                   if (event is KeyDownEvent) {
-                    _startLaser();
+                    _startAutoOrganize();
                   } else if (event is KeyUpEvent) {
-                    _stopLaser();
+                    _stopAutoOrganize();
                   }
+                  return KeyEventResult.handled;
                 }
                 return KeyEventResult.ignored;
               },
@@ -466,16 +466,7 @@ class _MindMapScreenState extends State<MindMapScreen> {
                 child: SizedBox(
                   width: _canvasSize,
                   height: _canvasSize,
-                  child: Listener(
-                    onPointerDown: (event) {
-                      if (_isLaserActive) {
-                        setState(() {
-                          _laserPosition = event.localPosition;
-                        });
-                      }
-                    },
-                    child: stack,
-                  ),
+                  child: stack,
                 ),
               ),
             ),
