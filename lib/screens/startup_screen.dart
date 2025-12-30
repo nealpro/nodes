@@ -10,10 +10,7 @@ class StartupScreen extends StatelessWidget {
   /// Project service for managing projects
   final ProjectService projectService;
 
-  const StartupScreen({
-    super.key,
-    required this.projectService,
-  });
+  const StartupScreen({super.key, required this.projectService});
 
   void _onUseProjectWorkflow(BuildContext context) {
     Navigator.of(context).pushReplacement(
@@ -202,7 +199,9 @@ class _OptionCard extends StatelessWidget {
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: isSecondary
                             ? colorScheme.onSurfaceVariant
-                            : colorScheme.onPrimaryContainer.withValues(alpha: 0.8),
+                            : colorScheme.onPrimaryContainer.withValues(
+                                alpha: 0.8,
+                              ),
                       ),
                     ),
                   ],

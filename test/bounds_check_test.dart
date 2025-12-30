@@ -10,11 +10,7 @@ void main() {
     WidgetTester tester,
   ) async {
     // Create MindMapScreen directly without test mode (no pre-generated nodes)
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: MindMapScreen(),
-      ),
-    );
+    await tester.pumpWidget(const MaterialApp(home: MindMapScreen()));
     await tester.pumpAndSettle();
 
     // Add a node using 'E' key

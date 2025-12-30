@@ -8,9 +8,7 @@ void main() {
   ) async {
     // Create MindMapScreen directly in test mode to bypass startup screen
     await tester.pumpWidget(
-      const MaterialApp(
-        home: MindMapScreen(isTestMode: true),
-      ),
+      const MaterialApp(home: MindMapScreen(isTestMode: true)),
     );
     await tester.pumpAndSettle();
 
