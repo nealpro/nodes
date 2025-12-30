@@ -2,8 +2,6 @@
 
 Blazingly fast mindmaps on many platforms with intuitive defaults. Inspired by `vim` and `h-m-m`.
 
-Uses the Flutter Flame engine.
-
 ## Features
 
 - Freeform mode: Multiple mindmaps can co-exist on the same plane with nodes that can move anywhere freely.

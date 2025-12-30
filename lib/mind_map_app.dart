@@ -36,6 +36,13 @@ class _MindMapScreenState extends State<MindMapScreen> {
   final Map<String, DateTime> _nodeCreationTimes = {};
   int _nodeIdCounter = 0;
 
+  /// Version counter for connection repainting - increment when node positions change
+  int _connectionVersion = 0;
+
+  /// Cached visible rect for culling - updated on transform changes
+  Rect? _visibleRect;
+  Size? _lastConstraints;
+
   @override
   void dispose() {
     _transformationController.removeListener(_onTransformationChange);
@@ -59,6 +66,25 @@ class _MindMapScreenState extends State<MindMapScreen> {
 
   void _onTransformationChange() {
     _viewportController.validateAndReset();
+    // Update visible rect for culling
+    if (_lastConstraints != null) {
+      _updateVisibleRect(_lastConstraints!);
+    }
+  }
+
+  /// Computes the visible rect in canvas coordinates for culling
+  void _updateVisibleRect(Size viewportSize) {
+    final matrix = _transformationController.value;
+    final inverse = Matrix4.inverted(matrix);
+
+    // Transform viewport corners to canvas space
+    final topLeft = MatrixUtils.transformPoint(inverse, Offset.zero);
+    final bottomRight = MatrixUtils.transformPoint(
+      inverse,
+      Offset(viewportSize.width, viewportSize.height),
+    );
+
+    _visibleRect = Rect.fromPoints(topLeft, bottomRight).inflate(100);
   }
 
   Future<void> _openOrganizedMode() async {
@@ -153,9 +179,8 @@ class _MindMapScreenState extends State<MindMapScreen> {
         newNode.parent = parent;
         parent.children.add(newNode);
         // Position near the selected node
-        newNode.position = Offset(
-          _selectedNode!.position.dx,
-          _selectedNode!.position.dy + 80,
+        newNode.position = _clampToCanvas(
+          Offset(_selectedNode!.position.dx, _selectedNode!.position.dy + 80),
         );
       }
       // Otherwise, add as a new root node
@@ -189,10 +214,12 @@ class _MindMapScreenState extends State<MindMapScreen> {
         newNode.parent = _selectedNode;
         _selectedNode!.children.add(newNode);
         // Position to the right of the parent
-        newNode.position = Offset(
-          _selectedNode!.position.dx + 180,
-          _selectedNode!.position.dy +
-              (_selectedNode!.children.length - 1) * 80,
+        newNode.position = _clampToCanvas(
+          Offset(
+            _selectedNode!.position.dx + 180,
+            _selectedNode!.position.dy +
+                (_selectedNode!.children.length - 1) * 80,
+          ),
         );
       }
       // Otherwise, add as a new root node
@@ -204,14 +231,23 @@ class _MindMapScreenState extends State<MindMapScreen> {
     _viewportController.centerOnNode(_selectedNode!, constraints);
   }
 
+  Offset _clampToCanvas(Offset position) {
+    return Offset(
+      position.dx.clamp(0.0, _canvasSize - 120),
+      position.dy.clamp(0.0, _canvasSize - 60),
+    );
+  }
+
   Offset _calculateNewNodePosition() {
     // Default position: center of canvas
     if (_nodes.isEmpty) {
-      return Offset(_canvasSize / 2 - 60, _canvasSize / 2 - 30);
+      return _clampToCanvas(Offset(_canvasSize / 2 - 60, _canvasSize / 2 - 30));
     }
     // Position near the last node
     final lastNode = _nodes.last;
-    return Offset(lastNode.position.dx + 50, lastNode.position.dy + 80);
+    return _clampToCanvas(
+      Offset(lastNode.position.dx + 50, lastNode.position.dy + 80),
+    );
   }
 
   void _showNodeContentPopup(Node node) {
@@ -285,40 +321,50 @@ class _MindMapScreenState extends State<MindMapScreen> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
+          // Cache constraints and update visible rect for culling
+          if (_lastConstraints != constraints.biggest) {
+            _lastConstraints = constraints.biggest;
+            _updateVisibleRect(constraints.biggest);
+          }
+
           var stack = Stack(
             children: [
-              // Background grid
-              Positioned.fill(child: CustomPaint(painter: GridPainter())),
-
-              // Connections
+              // Background grid with culling
               Positioned.fill(
-                child: CustomPaint(painter: ConnectionPainter(nodes: _nodes)),
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: GridPainter(visibleRect: _visibleRect),
+                  ),
+                ),
               ),
 
-              // Nodes
-              ..._nodes.map((node) {
-                return Positioned(
-                  key: ValueKey(node.id),
-                  left: node.position.dx,
-                  top: node.position.dy,
-                  child: GestureDetector(
-                    onTap: () => _selectNode(node),
-                    onPanUpdate: (details) {
-                      setState(() {
-                        final newPosition = node.position + details.delta;
-                        node.position = Offset(
-                          newPosition.dx.clamp(0.0, _canvasSize - 120),
-                          newPosition.dy.clamp(0.0, _canvasSize - 60),
-                        );
-                      });
-                    },
-                    child: RepaintBoundary(
-                      child: NodeWidget(
-                        node: node,
-                        isSelected: _selectedNode == node,
-                      ),
+              // Connections with version tracking and culling
+              Positioned.fill(
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: ConnectionPainter(
+                      nodes: _nodes,
+                      version: _connectionVersion,
+                      visibleRect: _visibleRect,
                     ),
                   ),
+                ),
+              ),
+
+              // Nodes using DraggableNode for local drag state
+              ..._nodes.map((node) {
+                return DraggableNode(
+                  key: ValueKey(node.id),
+                  node: node,
+                  isSelected: _selectedNode == node,
+                  onTap: () => _selectNode(node),
+                  clampPosition: _clampToCanvas,
+                  onDragEnd: (newPosition) {
+                    setState(() {
+                      node.position = newPosition;
+                      _connectionVersion++; // Trigger connection repaint
+                    });
+                  },
                 );
               }),
             ],

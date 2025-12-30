@@ -5,7 +5,15 @@ class NodeWidget extends StatelessWidget {
   final Node node;
   final bool isSelected;
 
-  const NodeWidget({super.key, required this.node, this.isSelected = false});
+  /// Optional position override for display during drag operations
+  final Offset? positionOverride;
+
+  const NodeWidget({
+    super.key,
+    required this.node,
+    this.isSelected = false,
+    this.positionOverride,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +45,7 @@ class NodeWidget extends StatelessWidget {
             maxLines: 1,
           ),
           Text(
-            '(${node.position.dx.toInt()}, ${node.position.dy.toInt()})',
+            '(${(positionOverride ?? node.position).dx.toInt()}, ${(positionOverride ?? node.position).dy.toInt()})',
             style: TextStyle(fontSize: 10, color: Colors.grey[600]),
           ),
         ],

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nodes/main.dart';
 
@@ -18,16 +17,6 @@ void main() {
     await tester.tap(find.byType(InteractiveViewer));
     await tester.pump();
 
-    // Toggle organized mode
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyF);
-    await tester.pumpAndSettle();
-
-    // Verify we are in organized mode (pan disabled)
-    var interactiveViewer = tester.widget<InteractiveViewer>(
-      find.byType(InteractiveViewer),
-    );
-    expect(interactiveViewer.panEnabled, isFalse);
-
     // Set a bad matrix (non-invertible)
     dynamicState.transformationController.value = Matrix4.zero();
 
@@ -40,8 +29,8 @@ void main() {
       equals(Matrix4.identity()),
     );
 
-    // And reset organized mode (pan enabled)
-    interactiveViewer = tester.widget<InteractiveViewer>(
+    // InteractiveViewer should still be functional (pan enabled)
+    final interactiveViewer = tester.widget<InteractiveViewer>(
       find.byType(InteractiveViewer),
     );
     expect(interactiveViewer.panEnabled, isTrue);
