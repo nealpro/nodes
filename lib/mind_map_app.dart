@@ -1,21 +1,53 @@
 part of 'main.dart';
 
-class MindMapApp extends StatelessWidget {
+class MindMapApp extends StatefulWidget {
   const MindMapApp({super.key});
+
+  @override
+  State<MindMapApp> createState() => _MindMapAppState();
+}
+
+class _MindMapAppState extends State<MindMapApp> {
+  final ProjectService _projectService = ProjectService();
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Fast MindMap',
+      title: 'Nodes',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
-      home: const MindMapScreen(),
+      home: _buildHome(),
     );
+  }
+
+  Widget _buildHome() {
+    // In release mode, go directly to project selection
+    if (kReleaseMode) {
+      return ProjectSelectionScreen(projectService: _projectService);
+    }
+
+    // In debug/profile mode, show startup screen with options
+    return StartupScreen(projectService: _projectService);
   }
 }
 
+/// Screen for editing a mind map canvas
 class MindMapScreen extends StatefulWidget {
-  const MindMapScreen({super.key});
+  /// Optional project for persistent storage
+  final NodesProject? project;
+
+  /// Optional database service for saving/loading nodes
+  final DatabaseService? database;
+
+  /// Whether this is test mode with temporary generated nodes
+  final bool isTestMode;
+
+  const MindMapScreen({
+    super.key,
+    this.project,
+    this.database,
+    this.isTestMode = false,
+  });
 
   @override
   State<MindMapScreen> createState() => _MindMapScreenState();
@@ -43,8 +75,12 @@ class _MindMapScreenState extends State<MindMapScreen> {
   Rect? _visibleRect;
   Size? _lastConstraints;
 
+  /// Whether the initial data load is in progress
+  bool _isLoading = true;
+
   @override
   void dispose() {
+    _saveNodesToDatabase();
     _transformationController.removeListener(_onTransformationChange);
     _transformationController.dispose();
     super.dispose();
@@ -57,11 +93,60 @@ class _MindMapScreenState extends State<MindMapScreen> {
       transformationController: _transformationController,
       canvasSize: _canvasSize,
     );
-    if (kDebugMode) {
+    _initializeNodes();
+    _transformationController.addListener(_onTransformationChange);
+  }
+
+  Future<void> _initializeNodes() async {
+    if (widget.isTestMode) {
+      // Test mode: generate temporary nodes
       generateNodes(_nodes, _canvasSize);
       _registerExistingNodes();
+      setState(() {
+        _isLoading = false;
+      });
+    } else if (widget.database != null) {
+      // Project mode: load nodes from database
+      try {
+        final result = await widget.database!.loadAllNodes();
+        setState(() {
+          _nodes.addAll(result.nodes);
+          _nodeCreationTimes.addAll(result.creationTimes);
+          _nodeIdCounter = _nodes.length;
+          _isLoading = false;
+        });
+      } catch (e) {
+        // If loading fails, just start with empty nodes
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } else {
+      setState(() {
+        _isLoading = false;
+      });
     }
-    _transformationController.addListener(_onTransformationChange);
+  }
+
+  Future<void> _saveNodesToDatabase() async {
+    if (widget.database != null && !widget.isTestMode) {
+      try {
+        await widget.database!.saveAllNodes(_nodes, _nodeCreationTimes);
+        await widget.project?.save();
+      } catch (e) {
+        // Silently fail for now - could add error handling UI later
+      }
+    }
+  }
+
+  String _getAppBarTitle() {
+    if (widget.isTestMode) {
+      return 'Nodes (Test Mode)';
+    }
+    if (widget.project != null) {
+      return widget.project!.name;
+    }
+    return 'Nodes';
   }
 
   void _onTransformationChange() {
@@ -300,17 +385,43 @@ class _MindMapScreenState extends State<MindMapScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: Text(widget.project?.name ?? 'Nodes')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Fast MindMap'),
+        title: Text(_getAppBarTitle()),
         actions: [
+          // Save button (only for persistent projects)
+          if (widget.database != null && !widget.isTestMode)
+            IconButton(
+              icon: const Icon(Icons.save),
+              tooltip: 'Save',
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                await _saveNodesToDatabase();
+                if (mounted) {
+                  messenger.showSnackBar(
+                    const SnackBar(
+                      content: Text('Project saved'),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                }
+              },
+            ),
           IconButton(
             icon: const Icon(Icons.refresh),
+            tooltip: 'Reset nodes',
             onPressed: () {
               setState(() {
                 _nodes.clear();
                 _nodeCreationTimes.clear();
-                if (kDebugMode) {
+                if (widget.isTestMode) {
                   generateNodes(_nodes, _canvasSize);
                   _registerExistingNodes();
                 }

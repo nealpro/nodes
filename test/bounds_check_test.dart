@@ -9,7 +9,12 @@ void main() {
   testWidgets('MindMapScreen clamps node position to canvas bounds', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const MindMapApp());
+    // Create MindMapScreen directly without test mode (no pre-generated nodes)
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: MindMapScreen(),
+      ),
+    );
     await tester.pumpAndSettle();
 
     // Add a node using 'E' key

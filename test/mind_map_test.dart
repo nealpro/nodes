@@ -6,7 +6,12 @@ void main() {
   testWidgets('MindMapScreen handles non-invertible matrix', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const MindMapApp());
+    // Create MindMapScreen directly in test mode to bypass startup screen
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: MindMapScreen(isTestMode: true),
+      ),
+    );
     await tester.pumpAndSettle();
 
     // Find the state

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'node.dart';
-import 'node_widget.dart';
-import 'grid_painter.dart';
+import '../node.dart';
+import '../node_widget.dart';
+import '../grid_painter.dart';
 
 /// Result data returned when exiting organized mode
 class OrganizedModeResult {
