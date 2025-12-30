@@ -364,6 +364,35 @@ class _MindMapScreenState extends State<MindMapScreen> {
     );
   }
 
+  void _showHelpDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Keyboard Shortcuts'),
+        content: const SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('c: Center on selected node'),
+              Text('Ctrl+C: Center on canvas center'),
+              Text('f: Open organized mode'),
+              Text('e: Add adjacent/sibling node'),
+              Text('x: Add child node'),
+              Text('o: Show node content popup'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Node? _findFirstCreatedRootNode() {
     if (_nodes.isEmpty) return null;
     Node? firstRoot;
@@ -430,106 +459,122 @@ class _MindMapScreenState extends State<MindMapScreen> {
           ),
         ],
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          // Cache constraints and update visible rect for culling
-          if (_lastConstraints != constraints.biggest) {
-            _lastConstraints = constraints.biggest;
-            _updateVisibleRect(constraints.biggest);
-          }
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              // Cache constraints and update visible rect for culling
+              if (_lastConstraints != constraints.biggest) {
+                _lastConstraints = constraints.biggest;
+                _updateVisibleRect(constraints.biggest);
+              }
 
-          var stack = Stack(
-            children: [
-              // Background grid with culling
-              Positioned.fill(
-                child: RepaintBoundary(
-                  child: CustomPaint(
-                    painter: GridPainter(visibleRect: _visibleRect),
+              var stack = Stack(
+                children: [
+                  // Background grid with culling
+                  Positioned.fill(
+                    child: RepaintBoundary(
+                      child: CustomPaint(
+                        painter: GridPainter(visibleRect: _visibleRect),
+                      ),
+                    ),
                   ),
-                ),
-              ),
 
-              // Connections with version tracking and culling
-              Positioned.fill(
-                child: RepaintBoundary(
-                  child: CustomPaint(
-                    painter: ConnectionPainter(
-                      nodes: _nodes,
-                      version: _connectionVersion,
-                      visibleRect: _visibleRect,
+                  // Connections with version tracking and culling
+                  Positioned.fill(
+                    child: RepaintBoundary(
+                      child: CustomPaint(
+                        painter: ConnectionPainter(
+                          nodes: _nodes,
+                          version: _connectionVersion,
+                          visibleRect: _visibleRect,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // Nodes using DraggableNode for local drag state
+                  ..._nodes.map((node) {
+                    return DraggableNode(
+                      key: ValueKey(node.id),
+                      node: node,
+                      isSelected: _selectedNode == node,
+                      onTap: () => _selectNode(node),
+                      clampPosition: _clampToCanvas,
+                      onDragEnd: (newPosition) {
+                        setState(() {
+                          node.position = newPosition;
+                          _connectionVersion++; // Trigger connection repaint
+                        });
+                      },
+                    );
+                  }),
+                ],
+              );
+              return CallbackShortcuts(
+                bindings: {
+                  // C - center on selected node, or first root node if none selected
+                  const SingleActivator(LogicalKeyboardKey.keyC): () {
+                    final node = _selectedNode ?? _findFirstCreatedRootNode();
+                    if (node != null) {
+                      _viewportController.centerOnNode(node, constraints);
+                    }
+                  },
+                  // Ctrl+C - center on canvas
+                  const SingleActivator(
+                    LogicalKeyboardKey.keyC,
+                    control: true,
+                  ): () =>
+                      _viewportController.center(constraints),
+                  // F - open organized mode
+                  const SingleActivator(LogicalKeyboardKey.keyF):
+                      _openOrganizedMode,
+                  // E - add adjacent node
+                  const SingleActivator(LogicalKeyboardKey.keyE): () =>
+                      _addAdjacentNode(constraints),
+                  // X - add child node
+                  const SingleActivator(LogicalKeyboardKey.keyX): () =>
+                      _addChildNode(constraints),
+                  // O - show node content popup
+                  const SingleActivator(LogicalKeyboardKey.keyO): () {
+                    if (_selectedNode != null) {
+                      _showNodeContentPopup(_selectedNode!);
+                    }
+                  },
+                },
+                child: Focus(
+                  autofocus: true,
+                  child: InteractiveViewer(
+                    transformationController: _transformationController,
+                    panEnabled: true,
+                    scaleEnabled: true,
+                    boundaryMargin: const EdgeInsets.all(double.infinity),
+                    minScale: 0.1,
+                    maxScale: 5.0,
+                    constrained: false, // Infinite canvas
+                    child: SizedBox(
+                      width: _canvasSize,
+                      height: _canvasSize,
+                      child: stack,
                     ),
                   ),
                 ),
-              ),
-
-              // Nodes using DraggableNode for local drag state
-              ..._nodes.map((node) {
-                return DraggableNode(
-                  key: ValueKey(node.id),
-                  node: node,
-                  isSelected: _selectedNode == node,
-                  onTap: () => _selectNode(node),
-                  clampPosition: _clampToCanvas,
-                  onDragEnd: (newPosition) {
-                    setState(() {
-                      node.position = newPosition;
-                      _connectionVersion++; // Trigger connection repaint
-                    });
-                  },
-                );
-              }),
-            ],
-          );
-          return CallbackShortcuts(
-            bindings: {
-              // C - center on selected node, or first root node if none selected
-              const SingleActivator(LogicalKeyboardKey.keyC): () {
-                final node = _selectedNode ?? _findFirstCreatedRootNode();
-                if (node != null) {
-                  _viewportController.centerOnNode(node, constraints);
-                }
-              },
-              // Ctrl+C - center on canvas
-              const SingleActivator(
-                LogicalKeyboardKey.keyC,
-                control: true,
-              ): () =>
-                  _viewportController.center(constraints),
-              // F - open organized mode
-              const SingleActivator(LogicalKeyboardKey.keyF):
-                  _openOrganizedMode,
-              // E - add adjacent node
-              const SingleActivator(LogicalKeyboardKey.keyE): () =>
-                  _addAdjacentNode(constraints),
-              // X - add child node
-              const SingleActivator(LogicalKeyboardKey.keyX): () =>
-                  _addChildNode(constraints),
-              // O - show node content popup
-              const SingleActivator(LogicalKeyboardKey.keyO): () {
-                if (_selectedNode != null) {
-                  _showNodeContentPopup(_selectedNode!);
-                }
-              },
+              );
             },
-            child: Focus(
-              autofocus: true,
-              child: InteractiveViewer(
-                transformationController: _transformationController,
-                panEnabled: true,
-                scaleEnabled: true,
-                boundaryMargin: const EdgeInsets.all(double.infinity),
-                minScale: 0.1,
-                maxScale: 5.0,
-                constrained: false, // Infinite canvas
-                child: SizedBox(
-                  width: _canvasSize,
-                  height: _canvasSize,
-                  child: stack,
-                ),
+          ),
+          Positioned(
+            right: 20,
+            bottom: 20,
+            child: FloatingActionButton(
+              onPressed: _showHelpDialog,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
+              child: const Icon(Icons.question_mark),
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }

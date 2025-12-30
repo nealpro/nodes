@@ -240,6 +240,33 @@ class _OrganizedModeScreenState extends State<OrganizedModeScreen> {
     );
   }
 
+  void _showHelpDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Keyboard Shortcuts'),
+        content: const SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('h/j/k/l: Navigate (parent/next/prev/child)'),
+              Text('c: Center on selected'),
+              Text('f / Esc: Exit to freeform mode'),
+              Text('o: Show node content popup'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _exitOrganizedMode() {
     Navigator.of(context).pop(OrganizedModeResult(selectedNode: _selectedNode));
   }
@@ -303,50 +330,68 @@ class _OrganizedModeScreenState extends State<OrganizedModeScreen> {
           ),
         ],
       ),
-      body: CallbackShortcuts(
-        bindings: {
-          // Navigation keybinds (H, J, K, L)
-          const SingleActivator(LogicalKeyboardKey.keyH): () =>
-              _navigateSelection('h'),
-          const SingleActivator(LogicalKeyboardKey.keyJ): () =>
-              _navigateSelection('j'),
-          const SingleActivator(LogicalKeyboardKey.keyK): () =>
-              _navigateSelection('k'),
-          const SingleActivator(LogicalKeyboardKey.keyL): () =>
-              _navigateSelection('l'),
-          // F or Escape to exit organized mode
-          const SingleActivator(LogicalKeyboardKey.keyF): _exitOrganizedMode,
-          const SingleActivator(LogicalKeyboardKey.escape): _exitOrganizedMode,
-          // O to show node content popup
-          const SingleActivator(LogicalKeyboardKey.keyO): () {
-            if (_selectedNode != null) {
-              _showNodeContentPopup(_selectedNode!);
-            }
-          },
-          // C to center on selected node
-          const SingleActivator(LogicalKeyboardKey.keyC): () {
-            if (_selectedNode != null) {
-              _centerOnNode(_selectedNode!);
-            }
-          },
-        },
-        child: Focus(
-          autofocus: true,
-          child: InteractiveViewer(
-            transformationController: _transformationController,
-            panEnabled: true,
-            scaleEnabled: true,
-            boundaryMargin: const EdgeInsets.all(double.infinity),
-            minScale: 0.1,
-            maxScale: 5.0,
-            constrained: false,
-            child: SizedBox(
-              width: _canvasSize,
-              height: _canvasSize,
-              child: stack,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          CallbackShortcuts(
+            bindings: {
+              // Navigation keybinds (H, J, K, L)
+              const SingleActivator(LogicalKeyboardKey.keyH): () =>
+                  _navigateSelection('h'),
+              const SingleActivator(LogicalKeyboardKey.keyJ): () =>
+                  _navigateSelection('j'),
+              const SingleActivator(LogicalKeyboardKey.keyK): () =>
+                  _navigateSelection('k'),
+              const SingleActivator(LogicalKeyboardKey.keyL): () =>
+                  _navigateSelection('l'),
+              // F or Escape to exit organized mode
+              const SingleActivator(LogicalKeyboardKey.keyF):
+                  _exitOrganizedMode,
+              const SingleActivator(LogicalKeyboardKey.escape):
+                  _exitOrganizedMode,
+              // O to show node content popup
+              const SingleActivator(LogicalKeyboardKey.keyO): () {
+                if (_selectedNode != null) {
+                  _showNodeContentPopup(_selectedNode!);
+                }
+              },
+              // C to center on selected node
+              const SingleActivator(LogicalKeyboardKey.keyC): () {
+                if (_selectedNode != null) {
+                  _centerOnNode(_selectedNode!);
+                }
+              },
+            },
+            child: Focus(
+              autofocus: true,
+              child: InteractiveViewer(
+                transformationController: _transformationController,
+                panEnabled: true,
+                scaleEnabled: true,
+                boundaryMargin: const EdgeInsets.all(double.infinity),
+                minScale: 0.1,
+                maxScale: 5.0,
+                constrained: false,
+                child: SizedBox(
+                  width: _canvasSize,
+                  height: _canvasSize,
+                  child: stack,
+                ),
+              ),
             ),
           ),
-        ),
+          Positioned(
+            right: 20,
+            bottom: 20,
+            child: FloatingActionButton(
+              onPressed: _showHelpDialog,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.question_mark),
+            ),
+          ),
+        ],
       ),
     );
   }

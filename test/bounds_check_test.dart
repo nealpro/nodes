@@ -22,11 +22,15 @@ void main() {
 
     // Enter label and submit
     await tester.enterText(find.byType(TextField), 'Test Node');
-    await tester.tap(find.text('Add Node'));
+    await tester.tap(find.text('Create'));
     await tester.pumpAndSettle();
 
     // Verify node is added
     expect(find.text('Test Node'), findsOneWidget);
+
+    // Center on the node to ensure it is visible on screen for dragging
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+    await tester.pumpAndSettle();
 
     // Find the DraggableNode that wraps the node
     final draggableNodeFinder = find.byType(DraggableNode).first;
@@ -36,6 +40,12 @@ void main() {
     // Drag by -3000, -3000
     await tester.drag(draggableNodeFinder, const Offset(-3000, -3000));
     await tester.pumpAndSettle();
+
+    // Debug: print all text widgets
+    final textWidgets = tester.widgetList<Text>(find.byType(Text));
+    for (var widget in textWidgets) {
+      print('Found text: ${widget.data}');
+    }
 
     // Verify position text
     // NodeWidget displays position: '(${node.position.dx.toInt()}, ${node.position.dy.toInt()})'
