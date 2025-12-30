@@ -32,16 +32,12 @@ class _MindMapScreenState extends State<MindMapScreen> {
       _transformationController;
 
   late final ViewportController _viewportController;
-  bool _isOrganized = false;
-  bool _isAutoOrganizing = false;
-  Timer? _autoOrganizeTimer;
   Node? _selectedNode;
-  final Map<String, Offset> _targetPositions = {};
+  final Map<String, DateTime> _nodeCreationTimes = {};
   int _nodeIdCounter = 0;
 
   @override
   void dispose() {
-    _autoOrganizeTimer?.cancel();
     _transformationController.removeListener(_onTransformationChange);
     _transformationController.dispose();
     super.dispose();
@@ -56,199 +52,33 @@ class _MindMapScreenState extends State<MindMapScreen> {
     );
     if (kDebugMode) {
       generateNodes(_nodes, _canvasSize);
-      _nodeIdCounter = _nodes.length;
+      _registerExistingNodes();
     }
     _transformationController.addListener(_onTransformationChange);
   }
 
   void _onTransformationChange() {
-    if (!_viewportController.validateAndReset()) {
-      if (_isOrganized) {
-        setState(() {
-          _isOrganized = false;
-        });
-      }
-    }
+    _viewportController.validateAndReset();
   }
 
-  void _startAutoOrganize() {
-    if (_isAutoOrganizing || _isOrganized) return;
-    // Calculate target positions using the same layout algorithm
-    _calculateTargetPositions();
-    setState(() {
-      _isAutoOrganizing = true;
-    });
-    _autoOrganizeTimer = Timer.periodic(const Duration(milliseconds: 16), (
-      timer,
-    ) {
-      _stepTowardOrganized();
-    });
-  }
-
-  void _stopAutoOrganize() {
-    if (!_isAutoOrganizing) return;
-    _autoOrganizeTimer?.cancel();
-    setState(() {
-      _isAutoOrganizing = false;
-    });
-  }
-
-  void _calculateTargetPositions() {
+  Future<void> _openOrganizedMode() async {
     if (_nodes.isEmpty) return;
-    _targetPositions.clear();
-    final root = _nodes[0];
-    _calculateTreeLayout(root, 100, _canvasSize / 2);
-  }
 
-  double _calculateTreeLayout(Node node, double x, double y) {
-    const double nodeWidth = 120;
-    const double nodeHeight = 60;
-    const double horizontalGap = 100;
-    const double verticalGap = 40;
+    final result = await Navigator.of(context).push<OrganizedModeResult>(
+      MaterialPageRoute(
+        builder: (context) => OrganizedModeScreen(
+          nodes: _nodes,
+          initialSelectedNode: _selectedNode,
+        ),
+      ),
+    );
 
-    double childrenHeight = 0;
-    for (var child in node.children) {
-      childrenHeight += _getSubtreeHeight(child, nodeHeight, verticalGap);
+    // Update selection based on what was selected in organized mode
+    if (result != null && result.selectedNode != null) {
+      setState(() {
+        _selectedNode = result.selectedNode;
+      });
     }
-
-    // Store target position
-    _targetPositions[node.id] = Offset(x, y - nodeHeight / 2);
-
-    if (node.children.isNotEmpty) {
-      double currentY = y - childrenHeight / 2;
-      for (var child in node.children) {
-        final childSubtreeHeight = _getSubtreeHeight(
-          child,
-          nodeHeight,
-          verticalGap,
-        );
-        _calculateTreeLayout(
-          child,
-          x + nodeWidth + horizontalGap,
-          currentY + childSubtreeHeight / 2,
-        );
-        currentY += childSubtreeHeight;
-      }
-    }
-    return childrenHeight;
-  }
-
-  void _stepTowardOrganized() {
-    const double speed = 5.0; // Pixels per frame
-    const double snapThreshold = 2.0; // Snap to target when this close
-
-    bool allAtTarget = true;
-
-    setState(() {
-      for (var node in _nodes) {
-        final target = _targetPositions[node.id];
-        if (target == null) continue;
-
-        final double dx = target.dx - node.position.dx;
-        final double dy = target.dy - node.position.dy;
-        final double distance = sqrt(dx * dx + dy * dy);
-
-        if (distance > snapThreshold) {
-          allAtTarget = false;
-          // Move toward target
-          final double moveX = (dx / distance) * min(speed, distance);
-          final double moveY = (dy / distance) * min(speed, distance);
-          node.position += Offset(moveX, moveY);
-        } else {
-          // Snap to target
-          node.position = target;
-        }
-
-        // Clamp to canvas bounds
-        node.position = Offset(
-          node.position.dx.clamp(0.0, _canvasSize - 120),
-          node.position.dy.clamp(0.0, _canvasSize - 60),
-        );
-      }
-    });
-
-    // Auto-stop when all nodes reach their targets
-    if (allAtTarget) {
-      _stopAutoOrganize();
-    }
-  }
-
-  void _toggleOrganizedMode(BoxConstraints constraints) {
-    setState(() {
-      _isOrganized = !_isOrganized;
-      if (_isOrganized) {
-        // Save positions
-        for (var node in _nodes) {
-          node.savedPosition = node.position;
-        }
-        _organizeNodes();
-        // Select root node and center on it
-        if (_nodes.isNotEmpty) {
-          _selectedNode = _nodes[0];
-          _viewportController.centerOnNode(_selectedNode!, constraints);
-        }
-      } else {
-        // Keep selection when exiting organized mode
-        // Restore positions
-        for (var node in _nodes) {
-          if (node.savedPosition != null) {
-            node.position = node.savedPosition!;
-          }
-        }
-      }
-    });
-  }
-
-  void _organizeNodes() {
-    if (_nodes.isEmpty) return;
-    final root = _nodes[0];
-    _layoutTree(root, 100, _canvasSize / 2);
-  }
-
-  double _layoutTree(Node node, double x, double y) {
-    const double nodeWidth = 120;
-    const double nodeHeight = 60;
-    const double horizontalGap = 100;
-    const double verticalGap = 40;
-
-    // Calculate total height of children
-    double childrenHeight = 0;
-    for (var child in node.children) {
-      childrenHeight += _getSubtreeHeight(child, nodeHeight, verticalGap);
-    }
-
-    // Position current node
-    node.position = Offset(x, y - nodeHeight / 2);
-
-    // Position children
-    if (node.children.isNotEmpty) {
-      double currentY = y - childrenHeight / 2;
-      for (var child in node.children) {
-        final childSubtreeHeight = _getSubtreeHeight(
-          child,
-          nodeHeight,
-          verticalGap,
-        );
-        _layoutTree(
-          child,
-          x + nodeWidth + horizontalGap,
-          currentY + childSubtreeHeight / 2,
-        );
-        currentY += childSubtreeHeight;
-      }
-    }
-    return childrenHeight;
-  }
-
-  double _getSubtreeHeight(Node node, double nodeHeight, double verticalGap) {
-    if (node.children.isEmpty) {
-      return nodeHeight + verticalGap;
-    }
-    double height = 0;
-    for (var child in node.children) {
-      height += _getSubtreeHeight(child, nodeHeight, verticalGap);
-    }
-    return height;
   }
 
   void _selectNode(Node node) {
@@ -268,6 +98,36 @@ class _MindMapScreenState extends State<MindMapScreen> {
     return 'node_${_nodeIdCounter++}';
   }
 
+  Node _createNode({
+    required Offset position,
+    required String label,
+    required Color color,
+    Node? parent,
+  }) {
+    final id = _generateNodeId();
+    final node = Node(
+      id: id,
+      position: position,
+      label: label,
+      color: color,
+      parent: parent,
+    );
+    _nodeCreationTimes[id] = DateTime.now();
+    return node;
+  }
+
+  void _registerExistingNodes() {
+    // Register creation times for nodes generated externally (e.g., debug nodes)
+    // Uses current time but maintains relative order based on list position
+    final baseTime = DateTime.now();
+    for (var i = 0; i < _nodes.length; i++) {
+      _nodeCreationTimes[_nodes[i].id] = baseTime.add(
+        Duration(microseconds: i),
+      );
+    }
+    _nodeIdCounter = _nodes.length;
+  }
+
   Future<void> _addAdjacentNode(BoxConstraints constraints) async {
     final result = await Navigator.of(context).push<NewNodeResult>(
       MaterialPageRoute(
@@ -281,8 +141,7 @@ class _MindMapScreenState extends State<MindMapScreen> {
     if (result == null) return;
 
     setState(() {
-      final newNode = Node(
-        id: _generateNodeId(),
+      final newNode = _createNode(
         position: _calculateNewNodePosition(),
         label: result.label,
         color: result.color,
@@ -319,8 +178,7 @@ class _MindMapScreenState extends State<MindMapScreen> {
     if (result == null) return;
 
     setState(() {
-      final newNode = Node(
-        id: _generateNodeId(),
+      final newNode = _createNode(
         position: _calculateNewNodePosition(),
         label: result.label,
         color: result.color,
@@ -356,49 +214,6 @@ class _MindMapScreenState extends State<MindMapScreen> {
     return Offset(lastNode.position.dx + 50, lastNode.position.dy + 80);
   }
 
-  void _navigateSelection(String direction, BoxConstraints constraints) {
-    if (!_isOrganized || _selectedNode == null) return;
-
-    Node? newSelection;
-    switch (direction) {
-      case 'h': // Left - go to parent
-        newSelection = _selectedNode!.parent;
-        break;
-      case 'l': // Right - go to first child
-        if (_selectedNode!.children.isNotEmpty) {
-          newSelection = _selectedNode!.children.first;
-        }
-        break;
-      case 'j': // Down - go to next sibling
-        final parent = _selectedNode!.parent;
-        if (parent != null) {
-          final siblings = parent.children;
-          final currentIndex = siblings.indexOf(_selectedNode!);
-          if (currentIndex < siblings.length - 1) {
-            newSelection = siblings[currentIndex + 1];
-          }
-        }
-        break;
-      case 'k': // Up - go to previous sibling
-        final parent = _selectedNode!.parent;
-        if (parent != null) {
-          final siblings = parent.children;
-          final currentIndex = siblings.indexOf(_selectedNode!);
-          if (currentIndex > 0) {
-            newSelection = siblings[currentIndex - 1];
-          }
-        }
-        break;
-    }
-
-    if (newSelection != null) {
-      setState(() {
-        _selectedNode = newSelection;
-      });
-      _viewportController.centerOnNode(newSelection, constraints);
-    }
-  }
-
   void _showNodeContentPopup(Node node) {
     showDialog(
       context: context,
@@ -428,6 +243,25 @@ class _MindMapScreenState extends State<MindMapScreen> {
     );
   }
 
+  Node? _findFirstCreatedRootNode() {
+    if (_nodes.isEmpty) return null;
+    Node? firstRoot;
+    DateTime? earliestTime;
+
+    for (var node in _nodes) {
+      if (node.parent == null) {
+        final creationTime = _nodeCreationTimes[node.id];
+        if (creationTime != null) {
+          if (earliestTime == null || creationTime.isBefore(earliestTime)) {
+            earliestTime = creationTime;
+            firstRoot = node;
+          }
+        }
+      }
+    }
+    return firstRoot;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -439,8 +273,10 @@ class _MindMapScreenState extends State<MindMapScreen> {
             onPressed: () {
               setState(() {
                 _nodes.clear();
+                _nodeCreationTimes.clear();
                 if (kDebugMode) {
                   generateNodes(_nodes, _canvasSize);
+                  _registerExistingNodes();
                 }
               });
             },
@@ -467,17 +303,15 @@ class _MindMapScreenState extends State<MindMapScreen> {
                   top: node.position.dy,
                   child: GestureDetector(
                     onTap: () => _selectNode(node),
-                    onPanUpdate: _isOrganized
-                        ? null
-                        : (details) {
-                            setState(() {
-                              final newPosition = node.position + details.delta;
-                              node.position = Offset(
-                                newPosition.dx.clamp(0.0, _canvasSize - 120),
-                                newPosition.dy.clamp(0.0, _canvasSize - 60),
-                              );
-                            });
-                          },
+                    onPanUpdate: (details) {
+                      setState(() {
+                        final newPosition = node.position + details.delta;
+                        node.position = Offset(
+                          newPosition.dx.clamp(0.0, _canvasSize - 120),
+                          newPosition.dy.clamp(0.0, _canvasSize - 60),
+                        );
+                      });
+                    },
                     child: RepaintBoundary(
                       child: NodeWidget(
                         node: node,
@@ -491,22 +325,29 @@ class _MindMapScreenState extends State<MindMapScreen> {
           );
           return CallbackShortcuts(
             bindings: {
-              const SingleActivator(LogicalKeyboardKey.keyC): () =>
+              // C - center on selected node, or first root node if none selected
+              const SingleActivator(LogicalKeyboardKey.keyC): () {
+                final node = _selectedNode ?? _findFirstCreatedRootNode();
+                if (node != null) {
+                  _viewportController.centerOnNode(node, constraints);
+                }
+              },
+              // Ctrl+C - center on canvas
+              const SingleActivator(
+                LogicalKeyboardKey.keyC,
+                control: true,
+              ): () =>
                   _viewportController.center(constraints),
-              const SingleActivator(LogicalKeyboardKey.keyF): () =>
-                  _toggleOrganizedMode(constraints),
-              const SingleActivator(LogicalKeyboardKey.keyH): () =>
-                  _navigateSelection('h', constraints),
-              const SingleActivator(LogicalKeyboardKey.keyJ): () =>
-                  _navigateSelection('j', constraints),
-              const SingleActivator(LogicalKeyboardKey.keyK): () =>
-                  _navigateSelection('k', constraints),
-              const SingleActivator(LogicalKeyboardKey.keyL): () =>
-                  _navigateSelection('l', constraints),
+              // F - open organized mode
+              const SingleActivator(LogicalKeyboardKey.keyF):
+                  _openOrganizedMode,
+              // E - add adjacent node
               const SingleActivator(LogicalKeyboardKey.keyE): () =>
                   _addAdjacentNode(constraints),
+              // X - add child node
               const SingleActivator(LogicalKeyboardKey.keyX): () =>
                   _addChildNode(constraints),
+              // O - show node content popup
               const SingleActivator(LogicalKeyboardKey.keyO): () {
                 if (_selectedNode != null) {
                   _showNodeContentPopup(_selectedNode!);
@@ -515,21 +356,10 @@ class _MindMapScreenState extends State<MindMapScreen> {
             },
             child: Focus(
               autofocus: true,
-              onKeyEvent: (node, event) {
-                if (event.logicalKey == LogicalKeyboardKey.keyD) {
-                  if (event is KeyDownEvent) {
-                    _startAutoOrganize();
-                  } else if (event is KeyUpEvent) {
-                    _stopAutoOrganize();
-                  }
-                  return KeyEventResult.handled;
-                }
-                return KeyEventResult.ignored;
-              },
               child: InteractiveViewer(
                 transformationController: _transformationController,
-                panEnabled: !_isOrganized,
-                scaleEnabled: !_isOrganized,
+                panEnabled: true,
+                scaleEnabled: true,
                 boundaryMargin: const EdgeInsets.all(double.infinity),
                 minScale: 0.1,
                 maxScale: 5.0,
