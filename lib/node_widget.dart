@@ -30,7 +30,12 @@ class NodeWidget extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(node.label, style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text(
+            node.label,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+          ),
           Text(
             '(${node.position.dx.toInt()}, ${node.position.dy.toInt()})',
             style: TextStyle(fontSize: 10, color: Colors.grey[600]),

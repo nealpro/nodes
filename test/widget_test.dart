@@ -7,6 +7,6 @@ void main() {
     await tester.pumpWidget(const MindMapApp());
 
     // Verify that the title is present.
-    expect(find.text('Fast MindMap (500 Nodes)'), findsOneWidget);
+    expect(find.text('Fast MindMap'), findsOneWidget);
   });
 }
