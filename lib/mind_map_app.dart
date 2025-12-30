@@ -26,6 +26,11 @@ class _MindMapScreenState extends State<MindMapScreen> {
   final double _canvasSize = 5000.0;
   final TransformationController _transformationController =
       TransformationController();
+
+  @visibleForTesting
+  TransformationController get transformationController =>
+      _transformationController;
+
   late final ViewportController _viewportController;
   bool _isOrganized = false;
   bool _isAutoOrganizing = false;
