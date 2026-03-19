@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nodes/main.dart';
-import 'package:nodes/node.dart';
 import 'package:nodes/add_node_page.dart';
 
 void main() {
@@ -48,8 +47,7 @@ void main() {
     expect(clamp(const Offset(-50, -50)), const Offset(0, 0));
 
     // Bottom-right boundary
-    expect(
-        clamp(const Offset(5000, 5000)), const Offset(4880, 4940));
+    expect(clamp(const Offset(5000, 5000)), const Offset(4880, 4940));
 
     // Mixed: one axis over, one under
     expect(clamp(const Offset(-10, 3000)), const Offset(0, 3000));

@@ -66,8 +66,10 @@ void main() {
       expect(viewportController.scale, closeTo(1.0, 0.01));
 
       // Apply 2x zoom
-      transformationController.value = Matrix4.identity()..scale(2.0);
-      expect(viewportController.scale, closeTo(2.0, 0.01));
+      const zoomLevel = 2.0;
+      transformationController.value = Matrix4.identity()
+        ..scaleByDouble(zoomLevel, zoomLevel, zoomLevel, 1.0);
+      expect(viewportController.scale, closeTo(zoomLevel, 0.01));
     });
 
     test('reset returns to identity', () {
