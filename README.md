@@ -15,3 +15,4 @@ Blazingly fast mindmaps on many platforms with intuitive defaults. Inspired by `
 ## Future
 
 - Scripting language for customization.
+- Mobile support: iOS/Android
