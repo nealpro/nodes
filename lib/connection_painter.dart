@@ -1,21 +1,14 @@
 import 'package:flutter/material.dart';
 import 'node.dart';
 
-/// Tracks version changes for efficient repaint decisions
-class ConnectionVersion {
-  int _version = 0;
-  int get version => _version;
-  void increment() => _version++;
-}
-
 class ConnectionPainter extends CustomPainter {
   final List<Node> nodes;
 
-  /// Version counter - increment when connections need repainting
-  final int version;
+  /// Version notifier - triggers repaint when connections change
+  final ValueNotifier<int> connectionVersion;
 
-  /// Optional visible rect for culling (optimization for large canvases)
-  final Rect? visibleRect;
+  /// Notifier for visible rect — triggers repaint on viewport changes
+  final ValueNotifier<Rect?> visibleRectNotifier;
 
   // Reusable paint object
   static final Paint _paint = Paint()
@@ -23,12 +16,19 @@ class ConnectionPainter extends CustomPainter {
     ..strokeWidth = 2
     ..style = PaintingStyle.stroke;
 
-  ConnectionPainter({required this.nodes, this.version = 0, this.visibleRect});
+  ConnectionPainter({
+    required this.nodes,
+    required this.connectionVersion,
+    required this.visibleRectNotifier,
+  }) : super(
+          repaint:
+              Listenable.merge([connectionVersion, visibleRectNotifier]),
+        );
 
   @override
   void paint(Canvas canvas, Size size) {
     final path = Path();
-    final cullRect = visibleRect;
+    final cullRect = visibleRectNotifier.value;
 
     for (var node in nodes) {
       for (var child in node.children) {
@@ -66,8 +66,7 @@ class ConnectionPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant ConnectionPainter oldDelegate) {
-    // Only repaint if version changed (positions updated, nodes added/removed)
-    return version != oldDelegate.version ||
-        visibleRect != oldDelegate.visibleRect;
+    // Only need full repaint if the node list object itself changed
+    return nodes != oldDelegate.nodes;
   }
 }

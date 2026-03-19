@@ -1,19 +1,21 @@
 import 'package:flutter/material.dart';
 
 class GridPainter extends CustomPainter {
-  /// Optional visible rect for culling - only draw lines in visible area
-  final Rect? visibleRect;
+  /// Notifier for visible rect — painter repaints automatically when value changes
+  final ValueNotifier<Rect?> visibleRectNotifier;
 
   // Reusable paint object
   static final Paint _paint = Paint()
     ..color = Colors.grey[300]!
     ..strokeWidth = 1;
 
-  const GridPainter({this.visibleRect});
+  GridPainter({required this.visibleRectNotifier})
+      : super(repaint: visibleRectNotifier);
 
   @override
   void paint(Canvas canvas, Size size) {
     const double gridSize = 50;
+    final visibleRect = visibleRectNotifier.value;
 
     // If we have a visible rect, only draw lines in that area (with padding)
     final double startX;
@@ -23,10 +25,10 @@ class GridPainter extends CustomPainter {
 
     if (visibleRect != null) {
       // Round to grid boundaries and add padding
-      startX = (visibleRect!.left / gridSize).floor() * gridSize;
-      endX = ((visibleRect!.right / gridSize).ceil() + 1) * gridSize;
-      startY = (visibleRect!.top / gridSize).floor() * gridSize;
-      endY = ((visibleRect!.bottom / gridSize).ceil() + 1) * gridSize;
+      startX = (visibleRect.left / gridSize).floor() * gridSize;
+      endX = ((visibleRect.right / gridSize).ceil() + 1) * gridSize;
+      startY = (visibleRect.top / gridSize).floor() * gridSize;
+      endY = ((visibleRect.bottom / gridSize).ceil() + 1) * gridSize;
     } else {
       startX = 0;
       endX = size.width;
@@ -42,17 +44,19 @@ class GridPainter extends CustomPainter {
 
     // Draw vertical lines
     for (double x = clampedStartX; x <= clampedEndX; x += gridSize) {
-      canvas.drawLine(Offset(x, clampedStartY), Offset(x, clampedEndY), _paint);
+      canvas.drawLine(
+          Offset(x, clampedStartY), Offset(x, clampedEndY), _paint);
     }
 
     // Draw horizontal lines
     for (double y = clampedStartY; y <= clampedEndY; y += gridSize) {
-      canvas.drawLine(Offset(clampedStartX, y), Offset(clampedEndX, y), _paint);
+      canvas.drawLine(
+          Offset(clampedStartX, y), Offset(clampedEndX, y), _paint);
     }
   }
 
   @override
   bool shouldRepaint(covariant GridPainter oldDelegate) {
-    return visibleRect != oldDelegate.visibleRect;
+    return visibleRectNotifier != oldDelegate.visibleRectNotifier;
   }
 }

@@ -68,11 +68,11 @@ class _MindMapScreenState extends State<MindMapScreen> {
   final Map<String, DateTime> _nodeCreationTimes = {};
   int _nodeIdCounter = 0;
 
-  /// Version counter for connection repainting - increment when node positions change
-  int _connectionVersion = 0;
+  /// Version notifier for connection repainting - increment when node positions change
+  final ValueNotifier<int> _connectionVersion = ValueNotifier<int>(0);
 
-  /// Cached visible rect for culling - updated on transform changes
-  Rect? _visibleRect;
+  /// Visible rect notifier for painter culling - updated on transform changes
+  final ValueNotifier<Rect?> _visibleRect = ValueNotifier<Rect?>(null);
   Size? _lastConstraints;
 
   /// Whether the initial data load is in progress
@@ -83,6 +83,8 @@ class _MindMapScreenState extends State<MindMapScreen> {
     _saveNodesToDatabase();
     _transformationController.removeListener(_onTransformationChange);
     _transformationController.dispose();
+    _connectionVersion.dispose();
+    _visibleRect.dispose();
     super.dispose();
   }
 
@@ -126,6 +128,31 @@ class _MindMapScreenState extends State<MindMapScreen> {
         _isLoading = false;
       });
     }
+
+    // Auto-center on content after the first frame renders
+    if (_nodes.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _centerOnContent();
+      });
+    }
+  }
+
+  /// Centers the viewport on the first root node, or the canvas center if no roots
+  void _centerOnContent() {
+    if (!mounted) return;
+    // Use LayoutBuilder constraints from cached value, or fallback
+    final size = _lastConstraints;
+    if (size == null) return;
+    final constraints = BoxConstraints.tight(size);
+
+    final firstRoot = _findFirstCreatedRootNode();
+    if (firstRoot != null) {
+      _viewportController.centerOnNode(firstRoot, constraints);
+    } else if (_nodes.isNotEmpty) {
+      _viewportController.centerOnNode(_nodes.first, constraints);
+    } else {
+      _viewportController.center(constraints);
+    }
   }
 
   Future<void> _saveNodesToDatabase() async {
@@ -151,7 +178,7 @@ class _MindMapScreenState extends State<MindMapScreen> {
 
   void _onTransformationChange() {
     _viewportController.validateAndReset();
-    // Update visible rect for culling
+    // Update visible rect for culling — painters listen to this notifier directly
     if (_lastConstraints != null) {
       _updateVisibleRect(_lastConstraints!);
     }
@@ -159,17 +186,22 @@ class _MindMapScreenState extends State<MindMapScreen> {
 
   /// Computes the visible rect in canvas coordinates for culling
   void _updateVisibleRect(Size viewportSize) {
-    final matrix = _transformationController.value;
-    final inverse = Matrix4.inverted(matrix);
+    try {
+      final matrix = _transformationController.value;
+      final inverse = Matrix4.inverted(matrix);
 
-    // Transform viewport corners to canvas space
-    final topLeft = MatrixUtils.transformPoint(inverse, Offset.zero);
-    final bottomRight = MatrixUtils.transformPoint(
-      inverse,
-      Offset(viewportSize.width, viewportSize.height),
-    );
+      // Transform viewport corners to canvas space
+      final topLeft = MatrixUtils.transformPoint(inverse, Offset.zero);
+      final bottomRight = MatrixUtils.transformPoint(
+        inverse,
+        Offset(viewportSize.width, viewportSize.height),
+      );
 
-    _visibleRect = Rect.fromPoints(topLeft, bottomRight).inflate(100);
+      _visibleRect.value =
+          Rect.fromPoints(topLeft, bottomRight).inflate(100);
+    } catch (e) {
+      // Matrix not invertible — will be reset by validateAndReset
+    }
   }
 
   Future<void> _openOrganizedMode() async {
@@ -464,31 +496,35 @@ class _MindMapScreenState extends State<MindMapScreen> {
         children: [
           LayoutBuilder(
             builder: (context, constraints) {
-              // Cache constraints and update visible rect for culling
+              // Cache constraints and seed visible rect on first layout / resize
               if (_lastConstraints != constraints.biggest) {
                 _lastConstraints = constraints.biggest;
-                _updateVisibleRect(constraints.biggest);
+                // Schedule update to avoid modifying notifier during build
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) _updateVisibleRect(constraints.biggest);
+                });
               }
 
               var stack = Stack(
                 children: [
-                  // Background grid with culling
+                  // Background grid with culling — repaints via notifier
                   Positioned.fill(
                     child: RepaintBoundary(
                       child: CustomPaint(
-                        painter: GridPainter(visibleRect: _visibleRect),
+                        painter: GridPainter(
+                            visibleRectNotifier: _visibleRect),
                       ),
                     ),
                   ),
 
-                  // Connections with version tracking and culling
+                  // Connections — repaints via version + visible rect notifiers
                   Positioned.fill(
                     child: RepaintBoundary(
                       child: CustomPaint(
                         painter: ConnectionPainter(
                           nodes: _nodes,
-                          version: _connectionVersion,
-                          visibleRect: _visibleRect,
+                          connectionVersion: _connectionVersion,
+                          visibleRectNotifier: _visibleRect,
                         ),
                       ),
                     ),
@@ -505,7 +541,7 @@ class _MindMapScreenState extends State<MindMapScreen> {
                       onDragEnd: (newPosition) {
                         setState(() {
                           node.position = newPosition;
-                          _connectionVersion++; // Trigger connection repaint
+                          _connectionVersion.value++;
                         });
                       },
                     );

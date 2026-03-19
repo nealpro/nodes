@@ -35,6 +35,9 @@ class _OrganizedModeScreenState extends State<OrganizedModeScreen> {
 
   Node? _selectedNode;
 
+  // No culling in organized mode — full grid always drawn
+  final ValueNotifier<Rect?> _gridVisibleRect = ValueNotifier<Rect?>(null);
+
   // Organized positions for tree layout (separate from original positions)
   final Map<String, Offset> _organizedPositions = {};
 
@@ -53,8 +56,10 @@ class _OrganizedModeScreenState extends State<OrganizedModeScreen> {
   }
 
   @override
+  @override
   void dispose() {
     _transformationController.dispose();
+    _gridVisibleRect.dispose();
     super.dispose();
   }
 
@@ -294,7 +299,10 @@ class _OrganizedModeScreenState extends State<OrganizedModeScreen> {
     final stack = Stack(
       children: [
         // Background grid
-        Positioned.fill(child: CustomPaint(painter: GridPainter())),
+        Positioned.fill(
+            child: CustomPaint(
+                painter:
+                    GridPainter(visibleRectNotifier: _gridVisibleRect))),
 
         // Connections - using organized positions
         Positioned.fill(
