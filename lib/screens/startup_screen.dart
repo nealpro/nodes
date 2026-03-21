@@ -13,7 +13,7 @@ class StartupScreen extends StatelessWidget {
   const StartupScreen({super.key, required this.projectService});
 
   void _onUseProjectWorkflow(BuildContext context) {
-    Navigator.of(context).pushReplacement(
+    Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) =>
             ProjectSelectionScreen(projectService: projectService),
@@ -22,7 +22,7 @@ class StartupScreen extends StatelessWidget {
   }
 
   void _onGenerateTestNodes(BuildContext context) {
-    Navigator.of(context).pushReplacement(
+    Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => const MindMapScreen(isTestMode: true),
       ),

@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'node.dart';
 
@@ -34,6 +36,46 @@ class ViewportController {
     final double y = height / 2 - nodeCenterY;
     transformationController.value = Matrix4.identity()
       ..translateByDouble(x, y, 0.0, 1.0);
+  }
+
+  /// Fits all nodes into the viewport with padding.
+  void fitAllNodes(List<Node> nodes, BoxConstraints constraints) {
+    if (nodes.isEmpty) return;
+
+    const double nodeWidth = 120.0;
+    const double nodeHeight = 60.0;
+    const double padding = 40.0;
+
+    final double width = _getWidth(constraints);
+    final double height = _getHeight(constraints);
+
+    double minX = nodes.first.position.dx;
+    double minY = nodes.first.position.dy;
+    double maxX = nodes.first.position.dx + nodeWidth;
+    double maxY = nodes.first.position.dy + nodeHeight;
+
+    for (final node in nodes) {
+      minX = min(minX, node.position.dx);
+      minY = min(minY, node.position.dy);
+      maxX = max(maxX, node.position.dx + nodeWidth);
+      maxY = max(maxY, node.position.dy + nodeHeight);
+    }
+
+    final double boundsWidth = maxX - minX;
+    final double boundsHeight = maxY - minY;
+    final double bcx = (minX + maxX) / 2;
+    final double bcy = (minY + maxY) / 2;
+
+    final double scaleX = (width - padding * 2) / boundsWidth;
+    final double scaleY = (height - padding * 2) / boundsHeight;
+    final double s = min(scaleX, scaleY).clamp(0.1, 5.0);
+
+    final double tx = width / 2 - s * bcx;
+    final double ty = height / 2 - s * bcy;
+
+    transformationController.value = Matrix4.identity()
+      ..scale(s)
+      ..translate(tx / s, ty / s);
   }
 
   /// Resets the viewport to the identity matrix.

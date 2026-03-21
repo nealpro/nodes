@@ -28,7 +28,7 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen> {
   String? _error;
 
   void _navigateToMindMap(ProjectResult projectResult) {
-    Navigator.of(context).pushReplacement(
+    Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => MindMapScreen(
           project: projectResult.project,

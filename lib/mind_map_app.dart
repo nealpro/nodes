@@ -1,5 +1,7 @@
 part of 'main.dart';
 
+enum _CloseProjectAction { save, discard, cancel }
+
 class MindMapApp extends StatefulWidget {
   const MindMapApp({super.key});
 
@@ -78,9 +80,15 @@ class _MindMapScreenState extends State<MindMapScreen> {
   /// Whether the initial data load is in progress
   bool _isLoading = true;
 
+  /// Whether there are unsaved changes
+  bool _isDirty = false;
+
+  /// When true, skip the auto-save on dispose (used when user explicitly discards)
+  bool _skipAutoSave = false;
+
   @override
   void dispose() {
-    _saveNodesToDatabase();
+    if (!_skipAutoSave) _saveNodesToDatabase();
     _transformationController.removeListener(_onTransformationChange);
     _transformationController.dispose();
     _connectionVersion.dispose();
@@ -304,6 +312,7 @@ class _MindMapScreenState extends State<MindMapScreen> {
 
       _nodes.add(newNode);
       _selectedNode = newNode;
+      _isDirty = true;
     });
 
     _viewportController.centerOnNode(_selectedNode!, constraints);
@@ -343,6 +352,7 @@ class _MindMapScreenState extends State<MindMapScreen> {
 
       _nodes.add(newNode);
       _selectedNode = newNode;
+      _isDirty = true;
     });
 
     _viewportController.centerOnNode(_selectedNode!, constraints);
@@ -408,10 +418,12 @@ class _MindMapScreenState extends State<MindMapScreen> {
             children: [
               Text('c: Center on selected node'),
               Text('Ctrl+C: Center on canvas center'),
+              Text('Space: Fit all nodes in view'),
               Text('f: Open organized mode'),
               Text('e: Add adjacent/sibling node'),
               Text('x: Add child node'),
               Text('o: Show node content popup'),
+              Text('Ctrl+Q: Close project'),
             ],
           ),
         ),
@@ -444,6 +456,53 @@ class _MindMapScreenState extends State<MindMapScreen> {
     return firstRoot;
   }
 
+  Future<void> _handleCloseRequest() async {
+    // Test mode or no database — nothing to save, just pop
+    if (widget.database == null || widget.isTestMode || !_isDirty) {
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
+
+    final action = await showDialog<_CloseProjectAction>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Unsaved Changes'),
+        content: const Text('You have unsaved changes. Save before closing?'),
+        actions: [
+          TextButton(
+            onPressed: () =>
+                Navigator.of(context).pop(_CloseProjectAction.cancel),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.of(context).pop(_CloseProjectAction.discard),
+            child: const Text('Discard'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(context).pop(_CloseProjectAction.save),
+            child: const Text('Save & Close'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+
+    switch (action) {
+      case _CloseProjectAction.save:
+        await _saveNodesToDatabase();
+        if (mounted) Navigator.of(context).pop();
+      case _CloseProjectAction.discard:
+        _skipAutoSave = true;
+        Navigator.of(context).pop();
+      case null:
+      case _CloseProjectAction.cancel:
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -453,7 +512,12 @@ class _MindMapScreenState extends State<MindMapScreen> {
       );
     }
 
-    return Scaffold(
+    return PopScope(
+      canPop: !_isDirty || widget.database == null || widget.isTestMode,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _handleCloseRequest();
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: Text(_getAppBarTitle()),
         actions: [
@@ -466,6 +530,7 @@ class _MindMapScreenState extends State<MindMapScreen> {
                 final messenger = ScaffoldMessenger.of(context);
                 await _saveNodesToDatabase();
                 if (mounted) {
+                  setState(() => _isDirty = false);
                   messenger.showSnackBar(
                     const SnackBar(
                       content: Text('Project saved'),
@@ -486,6 +551,7 @@ class _MindMapScreenState extends State<MindMapScreen> {
                   generateNodes(_nodes, _canvasSize);
                   _registerExistingNodes();
                 }
+                _isDirty = true;
               });
             },
           ),
@@ -542,6 +608,7 @@ class _MindMapScreenState extends State<MindMapScreen> {
                         setState(() {
                           node.position = newPosition;
                           _connectionVersion.value++;
+                          _isDirty = true;
                         });
                       },
                     );
@@ -578,6 +645,14 @@ class _MindMapScreenState extends State<MindMapScreen> {
                       _showNodeContentPopup(_selectedNode!);
                     }
                   },
+                  // Space - fit all nodes into viewport
+                  const SingleActivator(LogicalKeyboardKey.space): () =>
+                      _viewportController.fitAllNodes(_nodes, constraints),
+                  // Ctrl+Q - close project
+                  const SingleActivator(
+                    LogicalKeyboardKey.keyQ,
+                    control: true,
+                  ): _handleCloseRequest,
                 },
                 child: Focus(
                   autofocus: true,
@@ -611,6 +686,7 @@ class _MindMapScreenState extends State<MindMapScreen> {
             ),
           ),
         ],
+      ),
       ),
     );
   }
