@@ -1,32 +1,49 @@
 import 'package:flutter/material.dart';
 import 'package:nodes/main.dart';
 import 'package:nodes/project/project_service.dart';
+import 'package:nodes/single_flight_action_mixin.dart';
 import 'package:nodes/screens/project_selection_screen.dart';
 
 /// Screen shown at startup in debug/profile mode.
 /// Allows the user to choose between using the project workflow
 /// or generating temporary test nodes.
-class StartupScreen extends StatelessWidget {
+class StartupScreen extends StatefulWidget {
   /// Project service for managing projects
   final ProjectService projectService;
 
   const StartupScreen({super.key, required this.projectService});
 
-  void _onUseProjectWorkflow(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) =>
-            ProjectSelectionScreen(projectService: projectService),
-      ),
-    );
+  @override
+  State<StartupScreen> createState() => _StartupScreenState();
+}
+
+class _StartupScreenState extends State<StartupScreen>
+    with SingleFlightActionMixin<StartupScreen> {
+  static const String _navigationAction = 'startup-navigation';
+
+  bool get _isNavigating => isActionInFlight(_navigationAction);
+
+  Future<void> _onUseProjectWorkflow() async {
+    await runSingleFlight(_navigationAction, () async {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) =>
+              ProjectSelectionScreen(projectService: widget.projectService),
+        ),
+      );
+      return null;
+    });
   }
 
-  void _onGenerateTestNodes(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const MindMapScreen(isTestMode: true),
-      ),
-    );
+  Future<void> _onGenerateTestNodes() async {
+    await runSingleFlight(_navigationAction, () async {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => const MindMapScreen(isTestMode: true),
+        ),
+      );
+      return null;
+    });
   }
 
   @override
@@ -110,7 +127,9 @@ class StartupScreen extends StatelessWidget {
                   title: 'Open or Create Project',
                   description:
                       'Use the standard workflow to create or open a Nodes project directory.',
-                  onTap: () => _onUseProjectWorkflow(context),
+                  onTap: _onUseProjectWorkflow,
+                  enabled: !_isNavigating,
+                  showProgress: _isNavigating,
                 ),
                 const SizedBox(height: 16),
 
@@ -120,8 +139,9 @@ class StartupScreen extends StatelessWidget {
                   title: 'Generate Test Nodes',
                   description:
                       'Create temporary test nodes for development. Data will not be saved.',
-                  onTap: () => _onGenerateTestNodes(context),
+                  onTap: _onGenerateTestNodes,
                   isSecondary: true,
+                  enabled: !_isNavigating,
                 ),
               ],
             ),
@@ -136,8 +156,10 @@ class _OptionCard extends StatelessWidget {
   final IconData icon;
   final String title;
   final String description;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final bool isSecondary;
+  final bool enabled;
+  final bool showProgress;
 
   const _OptionCard({
     required this.icon,
@@ -145,6 +167,8 @@ class _OptionCard extends StatelessWidget {
     required this.description,
     required this.onTap,
     this.isSecondary = false,
+    this.enabled = true,
+    this.showProgress = false,
   });
 
   @override
@@ -157,7 +181,7 @@ class _OptionCard extends StatelessWidget {
           : colorScheme.primaryContainer,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
-        onTap: onTap,
+        onTap: enabled ? onTap : null,
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -207,12 +231,24 @@ class _OptionCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(
-                Icons.chevron_right,
-                color: isSecondary
-                    ? colorScheme.onSurfaceVariant
-                    : colorScheme.onPrimaryContainer,
-              ),
+              if (showProgress)
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: isSecondary
+                        ? colorScheme.onSurfaceVariant
+                        : colorScheme.onPrimaryContainer,
+                  ),
+                )
+              else
+                Icon(
+                  Icons.chevron_right,
+                  color: isSecondary
+                      ? colorScheme.onSurfaceVariant
+                      : colorScheme.onPrimaryContainer,
+                ),
             ],
           ),
         ),

@@ -42,6 +42,7 @@ class _AddNodePageState extends State<AddNodePage> {
   final FocusNode _labelFocusNode = FocusNode();
   NodeType _selectedType = NodeType.text;
   Color _selectedColor = Colors.blue;
+  bool _isSubmitting = false;
 
   final List<Color> _availableColors = [
     Colors.blue,
@@ -73,6 +74,8 @@ class _AddNodePageState extends State<AddNodePage> {
   }
 
   void _createNode() {
+    if (_isSubmitting) return;
+
     final label = _labelController.text.trim();
     if (label.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -80,6 +83,10 @@ class _AddNodePageState extends State<AddNodePage> {
       );
       return;
     }
+
+    setState(() {
+      _isSubmitting = true;
+    });
 
     Navigator.of(context).pop(
       NewNodeResult(label: label, type: _selectedType, color: _selectedColor),
@@ -93,7 +100,7 @@ class _AddNodePageState extends State<AddNodePage> {
         title: Text(widget.isChild ? 'Add Child Node' : 'Add Node'),
         actions: [
           TextButton.icon(
-            onPressed: _createNode,
+            onPressed: _isSubmitting ? null : _createNode,
             icon: const Icon(Icons.check),
             label: const Text('Create'),
           ),
@@ -137,6 +144,7 @@ class _AddNodePageState extends State<AddNodePage> {
               ),
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => _createNode(),
+              enabled: !_isSubmitting,
             ),
             const SizedBox(height: 24),
 
@@ -157,13 +165,15 @@ class _AddNodePageState extends State<AddNodePage> {
                     ],
                   ),
                   selected: isSelected,
-                  onSelected: (selected) {
-                    if (selected) {
-                      setState(() {
-                        _selectedType = type;
-                      });
-                    }
-                  },
+                  onSelected: _isSubmitting
+                      ? null
+                      : (selected) {
+                          if (selected) {
+                            setState(() {
+                              _selectedType = type;
+                            });
+                          }
+                        },
                 );
               }).toList(),
             ),
@@ -178,11 +188,13 @@ class _AddNodePageState extends State<AddNodePage> {
               children: _availableColors.map((color) {
                 final isSelected = color == _selectedColor;
                 return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedColor = color;
-                    });
-                  },
+                  onTap: _isSubmitting
+                      ? null
+                      : () {
+                          setState(() {
+                            _selectedColor = color;
+                          });
+                        },
                   child: Container(
                     width: 40,
                     height: 40,

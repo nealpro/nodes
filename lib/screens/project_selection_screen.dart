@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:nodes/project/project_service.dart';
 import 'package:nodes/main.dart';
+import 'package:nodes/single_flight_action_mixin.dart';
 
 /// Result returned when a project is successfully selected
 class ProjectSelectionResult {
@@ -23,9 +24,13 @@ class ProjectSelectionScreen extends StatefulWidget {
   State<ProjectSelectionScreen> createState() => _ProjectSelectionScreenState();
 }
 
-class _ProjectSelectionScreenState extends State<ProjectSelectionScreen> {
+class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
+    with SingleFlightActionMixin<ProjectSelectionScreen> {
+  static const String _projectFlowAction = 'project-flow';
   bool _isLoading = false;
   String? _error;
+
+  bool get _isBusy => _isLoading || isActionInFlight(_projectFlowAction);
 
   void _navigateToMindMap(ProjectResult projectResult) {
     Navigator.of(context).push(
@@ -39,59 +44,67 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen> {
   }
 
   Future<void> _createNewProject() async {
-    final result = await showDialog<_NewProjectDialogResult>(
-      context: context,
-      builder: (context) => const _NewProjectDialog(),
-    );
+    await runSingleFlight(_projectFlowAction, () async {
+      final result = await showDialog<_NewProjectDialogResult>(
+        context: context,
+        builder: (context) => const _NewProjectDialog(),
+      );
 
-    if (result == null || !mounted) return;
+      if (result == null || !mounted) return null;
 
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    final projectResult = await widget.projectService.createProjectWithPicker(
-      projectName: result.name,
-      description: result.description,
-    );
-
-    if (!mounted) return;
-
-    setState(() {
-      _isLoading = false;
-    });
-
-    if (projectResult.isSuccess) {
-      _navigateToMindMap(projectResult);
-    } else {
       setState(() {
-        _error = projectResult.error;
+        _isLoading = true;
+        _error = null;
       });
-    }
+
+      final projectResult = await widget.projectService.createProjectWithPicker(
+        projectName: result.name,
+        description: result.description,
+      );
+
+      if (!mounted) return null;
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      if (projectResult.isSuccess) {
+        _navigateToMindMap(projectResult);
+      } else {
+        setState(() {
+          _error = projectResult.error;
+        });
+      }
+
+      return null;
+    });
   }
 
   Future<void> _openExistingProject() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    final projectResult = await widget.projectService.openProjectWithPicker();
-
-    if (!mounted) return;
-
-    setState(() {
-      _isLoading = false;
-    });
-
-    if (projectResult.isSuccess) {
-      _navigateToMindMap(projectResult);
-    } else if (projectResult.error != 'No directory selected') {
+    await runSingleFlight(_projectFlowAction, () async {
       setState(() {
-        _error = projectResult.error;
+        _isLoading = true;
+        _error = null;
       });
-    }
+
+      final projectResult = await widget.projectService.openProjectWithPicker();
+
+      if (!mounted) return null;
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      if (projectResult.isSuccess) {
+        _navigateToMindMap(projectResult);
+      } else if (projectResult.error != 'No directory selected') {
+        setState(() {
+          _error = projectResult.error;
+        });
+      }
+
+      return null;
+    });
   }
 
   @override
@@ -164,7 +177,7 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen> {
 
                 // Create new project button
                 FilledButton.icon(
-                  onPressed: _isLoading ? null : _createNewProject,
+                  onPressed: _isBusy ? null : _createNewProject,
                   icon: const Icon(Icons.add),
                   label: const Text('Create New Project'),
                   style: FilledButton.styleFrom(
@@ -175,7 +188,7 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen> {
 
                 // Open existing project button
                 OutlinedButton.icon(
-                  onPressed: _isLoading ? null : _openExistingProject,
+                  onPressed: _isBusy ? null : _openExistingProject,
                   icon: const Icon(Icons.folder_open),
                   label: const Text('Open Existing Project'),
                   style: OutlinedButton.styleFrom(
@@ -252,6 +265,7 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
+  bool _isSubmitting = false;
 
   @override
   void dispose() {
@@ -261,16 +275,22 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
   }
 
   void _submit() {
-    if (_formKey.currentState!.validate()) {
-      Navigator.of(context).pop(
-        _NewProjectDialogResult(
-          name: _nameController.text.trim(),
-          description: _descriptionController.text.trim().isEmpty
-              ? null
-              : _descriptionController.text.trim(),
-        ),
-      );
+    if (_isSubmitting || !_formKey.currentState!.validate()) {
+      return;
     }
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    Navigator.of(context).pop(
+      _NewProjectDialogResult(
+        name: _nameController.text.trim(),
+        description: _descriptionController.text.trim().isEmpty
+            ? null
+            : _descriptionController.text.trim(),
+      ),
+    );
   }
 
   @override
@@ -319,10 +339,13 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
-        FilledButton(onPressed: _submit, child: const Text('Create')),
+        FilledButton(
+          onPressed: _isSubmitting ? null : _submit,
+          child: const Text('Create'),
+        ),
       ],
     );
   }

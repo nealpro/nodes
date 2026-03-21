@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:nodes/single_flight_action_mixin.dart';
 import '../node.dart';
 import '../node_widget.dart';
 import '../grid_painter.dart';
@@ -28,7 +29,9 @@ class OrganizedModeScreen extends StatefulWidget {
   State<OrganizedModeScreen> createState() => _OrganizedModeScreenState();
 }
 
-class _OrganizedModeScreenState extends State<OrganizedModeScreen> {
+class _OrganizedModeScreenState extends State<OrganizedModeScreen>
+    with SingleFlightActionMixin<OrganizedModeScreen> {
+  static const String _overlayAction = 'organized-overlay';
   final double _canvasSize = 5000.0;
   final TransformationController _transformationController =
       TransformationController();
@@ -55,7 +58,6 @@ class _OrganizedModeScreenState extends State<OrganizedModeScreen> {
     });
   }
 
-  @override
   @override
   void dispose() {
     _transformationController.dispose();
@@ -216,60 +218,66 @@ class _OrganizedModeScreenState extends State<OrganizedModeScreen> {
     _centerOnNode(node);
   }
 
-  void _showNodeContentPopup(Node node) {
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          constraints: const BoxConstraints(maxWidth: 400, maxHeight: 300),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  node.label,
-                  style: const TextStyle(fontSize: 18),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Close'),
-                ),
-              ],
+  Future<void> _showNodeContentPopup(Node node) async {
+    await runSingleFlight(_overlayAction, () async {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => Dialog(
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            constraints: const BoxConstraints(maxWidth: 400, maxHeight: 300),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    node.label,
+                    style: const TextStyle(fontSize: 18),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Close'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
+      return null;
+    });
   }
 
-  void _showHelpDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Keyboard Shortcuts'),
-        content: const SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('h/j/k/l: Navigate (parent/next/prev/child)'),
-              Text('c: Center on selected'),
-              Text('f / Esc: Exit to freeform mode'),
-              Text('o: Show node content popup'),
-            ],
+  Future<void> _showHelpDialog() async {
+    await runSingleFlight(_overlayAction, () async {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Keyboard Shortcuts'),
+          content: const SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('h/j/k/l: Navigate (parent/next/prev/child)'),
+                Text('c: Center on selected'),
+                Text('f / Esc: Exit to freeform mode'),
+                Text('o: Show node content popup'),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
+      );
+      return null;
+    });
   }
 
   void _exitOrganizedMode() {
@@ -300,9 +308,10 @@ class _OrganizedModeScreenState extends State<OrganizedModeScreen> {
       children: [
         // Background grid
         Positioned.fill(
-            child: CustomPaint(
-                painter:
-                    GridPainter(visibleRectNotifier: _gridVisibleRect))),
+          child: CustomPaint(
+            painter: GridPainter(visibleRectNotifier: _gridVisibleRect),
+          ),
+        ),
 
         // Connections - using organized positions
         Positioned.fill(
@@ -330,11 +339,13 @@ class _OrganizedModeScreenState extends State<OrganizedModeScreen> {
           IconButton(
             icon: const Icon(Icons.center_focus_strong),
             tooltip: 'Center on selected',
-            onPressed: () {
-              if (_selectedNode != null) {
-                _centerOnNode(_selectedNode!);
-              }
-            },
+            onPressed: isActionInFlight(_overlayAction)
+                ? null
+                : () {
+                    if (_selectedNode != null) {
+                      _centerOnNode(_selectedNode!);
+                    }
+                  },
           ),
         ],
       ),
@@ -392,7 +403,9 @@ class _OrganizedModeScreenState extends State<OrganizedModeScreen> {
             right: 20,
             bottom: 20,
             child: FloatingActionButton(
-              onPressed: _showHelpDialog,
+              onPressed: isActionInFlight(_overlayAction)
+                  ? null
+                  : _showHelpDialog,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),

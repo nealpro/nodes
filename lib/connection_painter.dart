@@ -21,9 +21,8 @@ class ConnectionPainter extends CustomPainter {
     required this.connectionVersion,
     required this.visibleRectNotifier,
   }) : super(
-          repaint:
-              Listenable.merge([connectionVersion, visibleRectNotifier]),
-        );
+         repaint: Listenable.merge([connectionVersion, visibleRectNotifier]),
+       );
 
   @override
   void paint(Canvas canvas, Size size) {

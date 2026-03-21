@@ -138,9 +138,7 @@ void main() {
       child.parent = parent;
 
       final version = ValueNotifier<int>(0);
-      final rect = ValueNotifier<Rect?>(
-        const Rect.fromLTRB(0, 0, 500, 500),
-      );
+      final rect = ValueNotifier<Rect?>(const Rect.fromLTRB(0, 0, 500, 500));
 
       await tester.pumpWidget(
         MaterialApp(
@@ -180,9 +178,7 @@ void main() {
 
       final version = ValueNotifier<int>(0);
       // Visible rect that doesn't include the nodes
-      final rect = ValueNotifier<Rect?>(
-        const Rect.fromLTRB(0, 0, 500, 500),
-      );
+      final rect = ValueNotifier<Rect?>(const Rect.fromLTRB(0, 0, 500, 500));
 
       await tester.pumpWidget(
         MaterialApp(

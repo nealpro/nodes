@@ -55,7 +55,10 @@ class MindMapScreen extends StatefulWidget {
   State<MindMapScreen> createState() => _MindMapScreenState();
 }
 
-class _MindMapScreenState extends State<MindMapScreen> {
+class _MindMapScreenState extends State<MindMapScreen>
+    with SingleFlightActionMixin<MindMapScreen> {
+  static const String _overlayAction = 'editor-overlay';
+  static const String _saveAction = 'editor-save';
   final List<Node> _nodes = [];
   final double _canvasSize = 5000.0;
   final TransformationController _transformationController =
@@ -85,6 +88,9 @@ class _MindMapScreenState extends State<MindMapScreen> {
 
   /// When true, skip the auto-save on dispose (used when user explicitly discards)
   bool _skipAutoSave = false;
+
+  bool get _isInteractionLocked =>
+      isAnyActionInFlight(const [_overlayAction, _saveAction]);
 
   @override
   void dispose() {
@@ -205,26 +211,28 @@ class _MindMapScreenState extends State<MindMapScreen> {
         Offset(viewportSize.width, viewportSize.height),
       );
 
-      _visibleRect.value =
-          Rect.fromPoints(topLeft, bottomRight).inflate(100);
+      _visibleRect.value = Rect.fromPoints(topLeft, bottomRight).inflate(100);
     } catch (e) {
       // Matrix not invertible — will be reset by validateAndReset
     }
   }
 
   Future<void> _openOrganizedMode() async {
-    if (_nodes.isEmpty) return;
+    if (_nodes.isEmpty || _isInteractionLocked) return;
 
-    final result = await Navigator.of(context).push<OrganizedModeResult>(
-      MaterialPageRoute(
-        builder: (context) => OrganizedModeScreen(
-          nodes: _nodes,
-          initialSelectedNode: _selectedNode,
+    final result = await runSingleFlight(_overlayAction, () async {
+      return Navigator.of(context).push<OrganizedModeResult>(
+        MaterialPageRoute(
+          builder: (context) => OrganizedModeScreen(
+            nodes: _nodes,
+            initialSelectedNode: _selectedNode,
+          ),
         ),
-      ),
-    );
+      );
+    });
 
     // Update selection based on what was selected in organized mode
+    if (!mounted) return;
     if (result != null && result.selectedNode != null) {
       setState(() {
         _selectedNode = result.selectedNode;
@@ -280,16 +288,20 @@ class _MindMapScreenState extends State<MindMapScreen> {
   }
 
   Future<void> _addAdjacentNode(BoxConstraints constraints) async {
-    final result = await Navigator.of(context).push<NewNodeResult>(
-      MaterialPageRoute(
-        builder: (context) => AddNodePage(
-          isChild: false,
-          parentLabel: _selectedNode?.parent?.label,
-        ),
-      ),
-    );
+    if (_isInteractionLocked) return;
 
-    if (result == null) return;
+    final result = await runSingleFlight(_overlayAction, () async {
+      return Navigator.of(context).push<NewNodeResult>(
+        MaterialPageRoute(
+          builder: (context) => AddNodePage(
+            isChild: false,
+            parentLabel: _selectedNode?.parent?.label,
+          ),
+        ),
+      );
+    });
+
+    if (result == null || !mounted) return;
 
     setState(() {
       final newNode = _createNode(
@@ -315,18 +327,24 @@ class _MindMapScreenState extends State<MindMapScreen> {
       _isDirty = true;
     });
 
-    _viewportController.centerOnNode(_selectedNode!, constraints);
+    if (_selectedNode != null) {
+      _viewportController.centerOnNode(_selectedNode!, constraints);
+    }
   }
 
   Future<void> _addChildNode(BoxConstraints constraints) async {
-    final result = await Navigator.of(context).push<NewNodeResult>(
-      MaterialPageRoute(
-        builder: (context) =>
-            AddNodePage(isChild: true, parentLabel: _selectedNode?.label),
-      ),
-    );
+    if (_isInteractionLocked) return;
 
-    if (result == null) return;
+    final result = await runSingleFlight(_overlayAction, () async {
+      return Navigator.of(context).push<NewNodeResult>(
+        MaterialPageRoute(
+          builder: (context) =>
+              AddNodePage(isChild: true, parentLabel: _selectedNode?.label),
+        ),
+      );
+    });
+
+    if (result == null || !mounted) return;
 
     setState(() {
       final newNode = _createNode(
@@ -355,7 +373,9 @@ class _MindMapScreenState extends State<MindMapScreen> {
       _isDirty = true;
     });
 
-    _viewportController.centerOnNode(_selectedNode!, constraints);
+    if (_selectedNode != null) {
+      _viewportController.centerOnNode(_selectedNode!, constraints);
+    }
   }
 
   Offset _clampToCanvas(Offset position) {
@@ -377,64 +397,74 @@ class _MindMapScreenState extends State<MindMapScreen> {
     );
   }
 
-  void _showNodeContentPopup(Node node) {
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          constraints: const BoxConstraints(maxWidth: 400, maxHeight: 300),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  node.label,
-                  style: const TextStyle(fontSize: 18),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Close'),
-                ),
-              ],
+  Future<void> _showNodeContentPopup(Node node) async {
+    if (_isInteractionLocked) return;
+
+    await runSingleFlight(_overlayAction, () async {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => Dialog(
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            constraints: const BoxConstraints(maxWidth: 400, maxHeight: 300),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    node.label,
+                    style: const TextStyle(fontSize: 18),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Close'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
+      return null;
+    });
   }
 
-  void _showHelpDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Keyboard Shortcuts'),
-        content: const SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('c: Center on selected node'),
-              Text('Ctrl+C: Center on canvas center'),
-              Text('Space: Fit all nodes in view'),
-              Text('f: Open organized mode'),
-              Text('e: Add adjacent/sibling node'),
-              Text('x: Add child node'),
-              Text('o: Show node content popup'),
-              Text('Ctrl+Q: Close project'),
-            ],
+  Future<void> _showHelpDialog() async {
+    if (_isInteractionLocked) return;
+
+    await runSingleFlight(_overlayAction, () async {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Keyboard Shortcuts'),
+          content: const SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('c: Center on selected node'),
+                Text('Ctrl+C: Center on canvas center'),
+                Text('Space: Fit all nodes in view'),
+                Text('f: Open organized mode'),
+                Text('e: Add adjacent/sibling node'),
+                Text('x: Add child node'),
+                Text('o: Show node content popup'),
+                Text('Ctrl+Q: Close project'),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
+      );
+      return null;
+    });
   }
 
   Node? _findFirstCreatedRootNode() {
@@ -457,46 +487,52 @@ class _MindMapScreenState extends State<MindMapScreen> {
   }
 
   Future<void> _handleCloseRequest() async {
+    if (_isInteractionLocked) return;
+
     // Test mode or no database — nothing to save, just pop
     if (widget.database == null || widget.isTestMode || !_isDirty) {
       if (mounted) Navigator.of(context).pop();
       return;
     }
 
-    final action = await showDialog<_CloseProjectAction>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Unsaved Changes'),
-        content: const Text('You have unsaved changes. Save before closing?'),
-        actions: [
-          TextButton(
-            onPressed: () =>
-                Navigator.of(context).pop(_CloseProjectAction.cancel),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () =>
-                Navigator.of(context).pop(_CloseProjectAction.discard),
-            child: const Text('Discard'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.of(context).pop(_CloseProjectAction.save),
-            child: const Text('Save & Close'),
-          ),
-        ],
-      ),
-    );
+    final action = await runSingleFlight(_overlayAction, () async {
+      return showDialog<_CloseProjectAction>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Unsaved Changes'),
+          content: const Text('You have unsaved changes. Save before closing?'),
+          actions: [
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(_CloseProjectAction.cancel),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(_CloseProjectAction.discard),
+              child: const Text('Discard'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(_CloseProjectAction.save),
+              child: const Text('Save & Close'),
+            ),
+          ],
+        ),
+      );
+    });
 
     if (!mounted) return;
 
     switch (action) {
       case _CloseProjectAction.save:
-        await _saveNodesToDatabase();
+        await runSingleFlight(_saveAction, () => _saveNodesToDatabase());
         if (mounted) Navigator.of(context).pop();
+        break;
       case _CloseProjectAction.discard:
         _skipAutoSave = true;
         Navigator.of(context).pop();
+        break;
       case null:
       case _CloseProjectAction.cancel:
         break;
@@ -518,175 +554,185 @@ class _MindMapScreenState extends State<MindMapScreen> {
         if (!didPop) _handleCloseRequest();
       },
       child: Scaffold(
-      appBar: AppBar(
-        title: Text(_getAppBarTitle()),
-        actions: [
-          // Save button (only for persistent projects)
-          if (widget.database != null && !widget.isTestMode)
+        appBar: AppBar(
+          title: Text(_getAppBarTitle()),
+          actions: [
+            // Save button (only for persistent projects)
+            if (widget.database != null && !widget.isTestMode)
+              IconButton(
+                icon: const Icon(Icons.save),
+                tooltip: 'Save',
+                onPressed: _isInteractionLocked
+                    ? null
+                    : () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        final didSave = await runSingleFlight(
+                          _saveAction,
+                          () async {
+                            await _saveNodesToDatabase();
+                            return true;
+                          },
+                        );
+                        if (didSave != true || !mounted) return;
+                        setState(() => _isDirty = false);
+                        messenger.showSnackBar(
+                          const SnackBar(
+                            content: Text('Project saved'),
+                            duration: Duration(seconds: 1),
+                          ),
+                        );
+                      },
+              ),
             IconButton(
-              icon: const Icon(Icons.save),
-              tooltip: 'Save',
-              onPressed: () async {
-                final messenger = ScaffoldMessenger.of(context);
-                await _saveNodesToDatabase();
-                if (mounted) {
-                  setState(() => _isDirty = false);
-                  messenger.showSnackBar(
-                    const SnackBar(
-                      content: Text('Project saved'),
-                      duration: Duration(seconds: 1),
-                    ),
-                  );
-                }
-              },
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Reset nodes',
+              onPressed: _isInteractionLocked
+                  ? null
+                  : () {
+                      setState(() {
+                        _nodes.clear();
+                        _nodeCreationTimes.clear();
+                        if (widget.isTestMode) {
+                          generateNodes(_nodes, _canvasSize);
+                          _registerExistingNodes();
+                        }
+                        _isDirty = true;
+                      });
+                    },
             ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Reset nodes',
-            onPressed: () {
-              setState(() {
-                _nodes.clear();
-                _nodeCreationTimes.clear();
-                if (widget.isTestMode) {
-                  generateNodes(_nodes, _canvasSize);
-                  _registerExistingNodes();
+          ],
+        ),
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            LayoutBuilder(
+              builder: (context, constraints) {
+                // Cache constraints and seed visible rect on first layout / resize
+                if (_lastConstraints != constraints.biggest) {
+                  _lastConstraints = constraints.biggest;
+                  // Schedule update to avoid modifying notifier during build
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) _updateVisibleRect(constraints.biggest);
+                  });
                 }
-                _isDirty = true;
-              });
-            },
-          ),
-        ],
-      ),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              // Cache constraints and seed visible rect on first layout / resize
-              if (_lastConstraints != constraints.biggest) {
-                _lastConstraints = constraints.biggest;
-                // Schedule update to avoid modifying notifier during build
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) _updateVisibleRect(constraints.biggest);
-                });
-              }
 
-              var stack = Stack(
-                children: [
-                  // Background grid with culling — repaints via notifier
-                  Positioned.fill(
-                    child: RepaintBoundary(
-                      child: CustomPaint(
-                        painter: GridPainter(
-                            visibleRectNotifier: _visibleRect),
-                      ),
-                    ),
-                  ),
-
-                  // Connections — repaints via version + visible rect notifiers
-                  Positioned.fill(
-                    child: RepaintBoundary(
-                      child: CustomPaint(
-                        painter: ConnectionPainter(
-                          nodes: _nodes,
-                          connectionVersion: _connectionVersion,
-                          visibleRectNotifier: _visibleRect,
+                var stack = Stack(
+                  children: [
+                    // Background grid with culling — repaints via notifier
+                    Positioned.fill(
+                      child: RepaintBoundary(
+                        child: CustomPaint(
+                          painter: GridPainter(
+                            visibleRectNotifier: _visibleRect,
+                          ),
                         ),
                       ),
                     ),
-                  ),
 
-                  // Nodes using DraggableNode for local drag state
-                  ..._nodes.map((node) {
-                    return DraggableNode(
-                      key: ValueKey(node.id),
-                      node: node,
-                      isSelected: _selectedNode == node,
-                      onTap: () => _selectNode(node),
-                      clampPosition: _clampToCanvas,
-                      onDragEnd: (newPosition) {
-                        setState(() {
-                          node.position = newPosition;
-                          _connectionVersion.value++;
-                          _isDirty = true;
-                        });
-                      },
-                    );
-                  }),
-                ],
-              );
-              return CallbackShortcuts(
-                bindings: {
-                  // C - center on selected node, or first root node if none selected
-                  const SingleActivator(LogicalKeyboardKey.keyC): () {
-                    final node = _selectedNode ?? _findFirstCreatedRootNode();
-                    if (node != null) {
-                      _viewportController.centerOnNode(node, constraints);
-                    }
+                    // Connections — repaints via version + visible rect notifiers
+                    Positioned.fill(
+                      child: RepaintBoundary(
+                        child: CustomPaint(
+                          painter: ConnectionPainter(
+                            nodes: _nodes,
+                            connectionVersion: _connectionVersion,
+                            visibleRectNotifier: _visibleRect,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    // Nodes using DraggableNode for local drag state
+                    ..._nodes.map((node) {
+                      return DraggableNode(
+                        key: ValueKey(node.id),
+                        node: node,
+                        isSelected: _selectedNode == node,
+                        onTap: () => _selectNode(node),
+                        clampPosition: _clampToCanvas,
+                        onDragEnd: (newPosition) {
+                          setState(() {
+                            node.position = newPosition;
+                            _connectionVersion.value++;
+                            _isDirty = true;
+                          });
+                        },
+                      );
+                    }),
+                  ],
+                );
+                return CallbackShortcuts(
+                  bindings: {
+                    // C - center on selected node, or first root node if none selected
+                    const SingleActivator(LogicalKeyboardKey.keyC): () {
+                      final node = _selectedNode ?? _findFirstCreatedRootNode();
+                      if (node != null) {
+                        _viewportController.centerOnNode(node, constraints);
+                      }
+                    },
+                    // Ctrl+C - center on canvas
+                    const SingleActivator(
+                      LogicalKeyboardKey.keyC,
+                      control: true,
+                    ): () =>
+                        _viewportController.center(constraints),
+                    // F - open organized mode
+                    const SingleActivator(LogicalKeyboardKey.keyF):
+                        _openOrganizedMode,
+                    // E - add adjacent node
+                    const SingleActivator(LogicalKeyboardKey.keyE): () =>
+                        _addAdjacentNode(constraints),
+                    // X - add child node
+                    const SingleActivator(LogicalKeyboardKey.keyX): () =>
+                        _addChildNode(constraints),
+                    // O - show node content popup
+                    const SingleActivator(LogicalKeyboardKey.keyO): () {
+                      if (_selectedNode != null) {
+                        _showNodeContentPopup(_selectedNode!);
+                      }
+                    },
+                    // Space - fit all nodes into viewport
+                    const SingleActivator(LogicalKeyboardKey.space): () =>
+                        _viewportController.fitAllNodes(_nodes, constraints),
+                    // Ctrl+Q - close project
+                    const SingleActivator(
+                      LogicalKeyboardKey.keyQ,
+                      control: true,
+                    ): _handleCloseRequest,
                   },
-                  // Ctrl+C - center on canvas
-                  const SingleActivator(
-                    LogicalKeyboardKey.keyC,
-                    control: true,
-                  ): () =>
-                      _viewportController.center(constraints),
-                  // F - open organized mode
-                  const SingleActivator(LogicalKeyboardKey.keyF):
-                      _openOrganizedMode,
-                  // E - add adjacent node
-                  const SingleActivator(LogicalKeyboardKey.keyE): () =>
-                      _addAdjacentNode(constraints),
-                  // X - add child node
-                  const SingleActivator(LogicalKeyboardKey.keyX): () =>
-                      _addChildNode(constraints),
-                  // O - show node content popup
-                  const SingleActivator(LogicalKeyboardKey.keyO): () {
-                    if (_selectedNode != null) {
-                      _showNodeContentPopup(_selectedNode!);
-                    }
-                  },
-                  // Space - fit all nodes into viewport
-                  const SingleActivator(LogicalKeyboardKey.space): () =>
-                      _viewportController.fitAllNodes(_nodes, constraints),
-                  // Ctrl+Q - close project
-                  const SingleActivator(
-                    LogicalKeyboardKey.keyQ,
-                    control: true,
-                  ): _handleCloseRequest,
-                },
-                child: Focus(
-                  autofocus: true,
-                  child: InteractiveViewer(
-                    transformationController: _transformationController,
-                    panEnabled: true,
-                    scaleEnabled: true,
-                    boundaryMargin: const EdgeInsets.all(double.infinity),
-                    minScale: 0.1,
-                    maxScale: 5.0,
-                    constrained: false, // Infinite canvas
-                    child: SizedBox(
-                      width: _canvasSize,
-                      height: _canvasSize,
-                      child: stack,
+                  child: Focus(
+                    autofocus: true,
+                    child: InteractiveViewer(
+                      transformationController: _transformationController,
+                      panEnabled: true,
+                      scaleEnabled: true,
+                      boundaryMargin: const EdgeInsets.all(double.infinity),
+                      minScale: 0.1,
+                      maxScale: 5.0,
+                      constrained: false, // Infinite canvas
+                      child: SizedBox(
+                        width: _canvasSize,
+                        height: _canvasSize,
+                        child: stack,
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
-          ),
-          Positioned(
-            right: 20,
-            bottom: 20,
-            child: FloatingActionButton(
-              onPressed: _showHelpDialog,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.question_mark),
+                );
+              },
             ),
-          ),
-        ],
-      ),
+            Positioned(
+              right: 20,
+              bottom: 20,
+              child: FloatingActionButton(
+                onPressed: _isInteractionLocked ? null : _showHelpDialog,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.question_mark),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

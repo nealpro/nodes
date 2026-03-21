@@ -10,7 +10,7 @@ class GridPainter extends CustomPainter {
     ..strokeWidth = 1;
 
   GridPainter({required this.visibleRectNotifier})
-      : super(repaint: visibleRectNotifier);
+    : super(repaint: visibleRectNotifier);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -44,14 +44,12 @@ class GridPainter extends CustomPainter {
 
     // Draw vertical lines
     for (double x = clampedStartX; x <= clampedEndX; x += gridSize) {
-      canvas.drawLine(
-          Offset(x, clampedStartY), Offset(x, clampedEndY), _paint);
+      canvas.drawLine(Offset(x, clampedStartY), Offset(x, clampedEndY), _paint);
     }
 
     // Draw horizontal lines
     for (double y = clampedStartY; y <= clampedEndY; y += gridSize) {
-      canvas.drawLine(
-          Offset(clampedStartX, y), Offset(clampedEndX, y), _paint);
+      canvas.drawLine(Offset(clampedStartX, y), Offset(clampedEndX, y), _paint);
     }
   }
 
